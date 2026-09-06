@@ -1,0 +1,328 @@
+{
+  "spec_version": "0.1",
+  "status": "requirements_not_implementation_results",
+  "tests": [
+    {
+      "id": "A01",
+      "milestone": "M0",
+      "gate": "core",
+      "requirement": "A built package imports without ML frameworks, CUDA, Docker, or model credentials.",
+      "verification": "Install wheel in a clean external environment and import the core package."
+    },
+    {
+      "id": "A02",
+      "milestone": "M0",
+      "gate": "core",
+      "requirement": "Two synthetic project repositories are generated outside the framework source root.",
+      "verification": "Check canonical paths; no user repository locator is consulted."
+    },
+    {
+      "id": "A03",
+      "milestone": "M0",
+      "gate": "core",
+      "requirement": "The offline demo executes real fixture commands and produces verified artifacts.",
+      "verification": "Block network after setup and compare outputs to independently calculable values."
+    },
+    {
+      "id": "A04",
+      "milestone": "M0",
+      "gate": "core",
+      "requirement": "A deterministic mock agent tests orchestration without model calls.",
+      "verification": "Assert provider call count is zero and replay yields expected task proposals."
+    },
+    {
+      "id": "A05",
+      "milestone": "M1",
+      "gate": "core",
+      "requirement": "Registration does not execute hooks, imports, installation, or project code.",
+      "verification": "Register a fixture with a trap setup/hook and assert the sentinel is untouched."
+    },
+    {
+      "id": "A06",
+      "milestone": "M1",
+      "gate": "core",
+      "requirement": "Runtime/lab/project data do not reside inside the framework checkout.",
+      "verification": "Reject conflicting canonical roots including symlink aliases."
+    },
+    {
+      "id": "A07",
+      "milestone": "M1",
+      "gate": "core",
+      "requirement": "Candidates modifying the same relative file remain independent.",
+      "verification": "Change candidate A; verify B, baseline and original external project hashes are unchanged."
+    },
+    {
+      "id": "A08",
+      "milestone": "M1",
+      "gate": "core",
+      "requirement": "Dirty sources are rejected or explicitly snapshotted with complete identity.",
+      "verification": "Exercise tracked and untracked changes; no silent omission."
+    },
+    {
+      "id": "A09",
+      "milestone": "M1",
+      "gate": "core",
+      "requirement": "Behavior changes alter recipe identity; presentation-only changes do not.",
+      "verification": "Property-test canonicalization, floats, key ordering and semantic-field coverage."
+    },
+    {
+      "id": "A10",
+      "milestone": "M1",
+      "gate": "core",
+      "requirement": "Malformed/oversized/mismatched adapter responses fail without publication.",
+      "verification": "Inject unknown major version, missing artifact and wrong attempt ID."
+    },
+    {
+      "id": "A11",
+      "milestone": "M1",
+      "gate": "core",
+      "requirement": "Safe artifact ingestion rejects traversal, symlinks and incomplete files.",
+      "verification": "Use synthetic malicious paths and partial output markers."
+    },
+    {
+      "id": "A12",
+      "milestone": "M2",
+      "gate": "isolation",
+      "requirement": "Worker cannot access controller state/policy or another candidate.",
+      "verification": "Perform actual forbidden reads/writes with non-sensitive sentinels."
+    },
+    {
+      "id": "A13",
+      "milestone": "M2",
+      "gate": "isolation",
+      "requirement": "No host home, drive, SSH agent or container socket is exposed to workers.",
+      "verification": "Inspect mounts and attempt accesses from inside the worker."
+    },
+    {
+      "id": "A14",
+      "milestone": "M2",
+      "gate": "isolation",
+      "requirement": "Denied network access fails, including subprocess attempts.",
+      "verification": "Use a local test egress endpoint; assert no request arrives."
+    },
+    {
+      "id": "A15",
+      "milestone": "M2",
+      "gate": "isolation",
+      "requirement": "CPU/RAM/PID/time and applicable storage caps have explicit tested enforcement.",
+      "verification": "Exceed each declared cap safely; reject contracts requiring unsupported hard caps."
+    },
+    {
+      "id": "A16",
+      "milestone": "M2",
+      "gate": "core",
+      "requirement": "Campaign budgets include retries and cannot be reset by creating new task IDs.",
+      "verification": "Exhaust a small budget across failed attempts and deny the next launch."
+    },
+    {
+      "id": "A17",
+      "milestone": "M2",
+      "gate": "isolation",
+      "requirement": "Cancellation stops the complete job before resources are released.",
+      "verification": "Spawn child processes and verify all are stopped after cancellation."
+    },
+    {
+      "id": "A18",
+      "milestone": "M2",
+      "gate": "core",
+      "requirement": "An unavailable requested security profile fails closed.",
+      "verification": "Remove a backend capability and ensure no subprocess fallback runs."
+    },
+    {
+      "id": "A19",
+      "milestone": "M2",
+      "gate": "core",
+      "requirement": "Approvals bind to contract digest, policy version, principal and expiry.",
+      "verification": "Replay an approval against modified inputs or worker identity and deny it."
+    },
+    {
+      "id": "A20",
+      "milestone": "M3",
+      "gate": "isolation",
+      "requirement": "Candidate/evaluator separation protects final targets.",
+      "verification": "Use sentinel target data unavailable to prediction workers and verify no access."
+    },
+    {
+      "id": "A21",
+      "milestone": "M3",
+      "gate": "core",
+      "requirement": "Tampered evaluators cannot certify a candidate.",
+      "verification": "Modify candidate-local evaluator code and require independent registered identity."
+    },
+    {
+      "id": "A22",
+      "milestone": "M3",
+      "gate": "core",
+      "requirement": "A fabricated metric is rejected by independent computation.",
+      "verification": "Submit a favorable score with worse predictions and certify only the recomputed result."
+    },
+    {
+      "id": "A23",
+      "milestone": "M3",
+      "gate": "core",
+      "requirement": "An honest negative finding completes the campaign successfully.",
+      "verification": "Use a known inferior treatment and ensure there is no retry-until-win loop."
+    },
+    {
+      "id": "A24",
+      "milestone": "M3",
+      "gate": "core",
+      "requirement": "A known analytic oracle or counterexample defeats a plausible wrong implementation.",
+      "verification": "Keep reference logic separate from candidate logic and mutation-test the check."
+    },
+    {
+      "id": "A25",
+      "milestone": "M3",
+      "gate": "core",
+      "requirement": "Every evaluated trial and selection choice remains in history.",
+      "verification": "Include failed, abandoned and unfavorable trials in the campaign ledger."
+    },
+    {
+      "id": "A26",
+      "milestone": "M3",
+      "gate": "core",
+      "requirement": "Changing a frozen metric or selection rule requires a new contract version.",
+      "verification": "Attempt mutation during confirmation and block or create an explicit amendment."
+    },
+    {
+      "id": "A27",
+      "milestone": "M3",
+      "gate": "core",
+      "requirement": "Reports distinguish execution, validity, finding and assurance.",
+      "verification": "Reject a report that equates exit-zero with a supported scientific claim."
+    },
+    {
+      "id": "A28",
+      "milestone": "M4",
+      "gate": "core",
+      "requirement": "Provider adapters share one typed task/result boundary.",
+      "verification": "Run mock, captured Codex and captured Claude responses through conformance tests."
+    },
+    {
+      "id": "A29",
+      "milestone": "M4",
+      "gate": "core",
+      "requirement": "Provider failures are bounded, recorded and do not mutate authority.",
+      "verification": "Simulate quota, malformed JSON, timeout, refusal and duplicate events."
+    },
+    {
+      "id": "A30",
+      "milestone": "M4",
+      "gate": "live_agent",
+      "requirement": "A live provider task is actually tested under an approved budget.",
+      "verification": "Record installed versions, requests, outputs, usage and sanitized evidence; no credentials means blocked."
+    },
+    {
+      "id": "A31",
+      "milestone": "M4",
+      "gate": "live_agent",
+      "requirement": "Provider credential boundary survives arbitrary project subprocesses.",
+      "verification": "Use synthetic token sentinels and verify they cannot be read by untrusted code."
+    },
+    {
+      "id": "A32",
+      "milestone": "M5",
+      "gate": "core",
+      "requirement": "Crash recovery does not blindly duplicate an existing job.",
+      "verification": "Crash before/after dispatch persistence and reconcile by stable backend identity."
+    },
+    {
+      "id": "A33",
+      "milestone": "M5",
+      "gate": "core",
+      "requirement": "Lease expiry does not free an occupied resource without reconciliation.",
+      "verification": "Keep old job alive, expire heartbeat, and deny conflicting replacement."
+    },
+    {
+      "id": "A34",
+      "milestone": "M5",
+      "gate": "core",
+      "requirement": "State-machine transitions preserve terminal history and reservations.",
+      "verification": "Generate action sequences with Hypothesis and compare to a reference model."
+    },
+    {
+      "id": "A35",
+      "milestone": "M5",
+      "gate": "core",
+      "requirement": "Cache reuse is not counted as an independent replicate.",
+      "verification": "Reuse an artifact then request replication; check evidence and randomization identities."
+    },
+    {
+      "id": "A36",
+      "milestone": "M5",
+      "gate": "core",
+      "requirement": "Evaluator/data invalidation reaches dependent claims.",
+      "verification": "Invalidate a parent artifact and assert reports become stale/invalid without deleting history."
+    },
+    {
+      "id": "A37",
+      "milestone": "M5",
+      "gate": "core",
+      "requirement": "Backup/restore and retention preserve documented evidence status.",
+      "verification": "Restore an interrupted campaign; GC cannot silently remove required evidence."
+    },
+    {
+      "id": "A38",
+      "milestone": "M5",
+      "gate": "core",
+      "requirement": "Blocked work does not prevent independent authorized progress.",
+      "verification": "Block a critical input for one branch; execute another ready task without expanding permissions."
+    },
+    {
+      "id": "A39",
+      "milestone": "M6",
+      "gate": "core",
+      "requirement": "Evidence export/import verifies hashes and preserves trust labels.",
+      "verification": "Round-trip a bundle, alter one artifact, reject tampering; imported evidence is not self-certified."
+    },
+    {
+      "id": "A40",
+      "milestone": "M6",
+      "gate": "core",
+      "requirement": "An unsupported numeric claim cannot appear as certified evidence.",
+      "verification": "Inject invented report numbers and require links to computed fields."
+    },
+    {
+      "id": "A41",
+      "milestone": "M6",
+      "gate": "core",
+      "requirement": "Clean-install demo needs no active research repository.",
+      "verification": "Run the built wheel outside the checkout using only generated fixtures."
+    },
+    {
+      "id": "A42",
+      "milestone": "M6",
+      "gate": "core",
+      "requirement": "Platform and feature gate reporting is honest.",
+      "verification": "Show blocked isolation/live/GPU checks separately from passed core checks."
+    },
+    {
+      "id": "A43",
+      "milestone": "M6",
+      "gate": "gpu",
+      "requirement": "GPU capability and exclusive Kestrel scheduling are tested on actual hardware.",
+      "verification": "Probe driver/container and run bounded jobs; report unmanaged-host contention limitation."
+    },
+    {
+      "id": "A44",
+      "milestone": "M6",
+      "gate": "core",
+      "requirement": "A source edit cannot authorize self-deployment of the controller.",
+      "verification": "Submit a worker request to upgrade policy/runtime and deny it without operator authority."
+    },
+    {
+      "id": "A45",
+      "milestone": "M6",
+      "gate": "core",
+      "requirement": "Project memory retrieval respects source permissions and data classifications.",
+      "verification": "Deny cross-project retrieval of restricted synthetic records and record the decision."
+    },
+    {
+      "id": "A46",
+      "milestone": "M6",
+      "gate": "core",
+      "requirement": "All required acceptance checks have concrete evidence, not unchecked declarations.",
+      "verification": "Generate release-gate report from actual results and identify missing/blocked checks."
+    }
+  ]
+}

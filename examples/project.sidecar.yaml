@@ -1,0 +1,24 @@
+# Illustrative protocol draft; NOT an enrolled project or runnable specification.
+protocol_version: "0.1"
+project_id: example-numerical-project
+source:
+  kind: git
+  locator: /ABSOLUTE/EXTERNAL/PATH/TO/PROJECT
+  revision: RESOLVE_TO_IMMUTABLE_COMMIT
+adapter:
+  identity: RESOLVE_TO_APPROVED_ADAPTER_DIGEST
+  commands:
+    validate_candidate: [python, adapter.py, validate]
+    execute: [python, adapter.py, execute]
+    predict: [python, adapter.py, predict]
+environment:
+  kind: image
+  identity: RESOLVE_TO_IMAGE_DIGEST
+capabilities:
+  exact_resume: false
+  predicts_without_targets: true
+data_policy:
+  classification: public_synthetic
+  external_model_access: false
+# Evaluators are independently registered in protected lab state.
+# This manifest cannot grant trust, filesystem rights, or approval.

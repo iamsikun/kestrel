@@ -1,0 +1,27 @@
+# Illustrative draft; placeholders must be resolved before validation/approval.
+contract_version: "0.1"
+campaign_id: synthetic-method-comparison
+project_id: example-numerical-project
+brief:
+  original: Compare two declared methods on the synthetic numerical fixture.
+  interpretation: Estimate the declared held-out error difference, not force a win.
+baseline: RESOLVE_TO_BASELINE_ARTIFACT
+candidates:
+  maximum: 2
+  allowed_interventions: [method_implementation]
+controls:
+  data: RESOLVE_TO_DATA_MANIFEST
+  randomization_plan: RESOLVE_TO_SEED_PLAN
+  evaluation: RESOLVE_TO_TRUSTED_EVALUATOR
+  analysis: RESOLVE_TO_ANALYSIS_PROTOCOL
+selection:
+  mode: predeclared_comparison
+  all_attempts_recorded: true
+completion:
+  accepted_findings: [supported_in_scope, not_supported, inconclusive]
+  positive_result_required: false
+permissions:
+  envelope: synthetic-offline
+  external_actions: false
+  evaluator_edits: false
+# A worker-written YAML file is a proposal, not an approval.

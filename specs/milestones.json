@@ -1,0 +1,119 @@
+{
+  "spec_version": "0.1",
+  "milestones": [
+    {
+      "id": "M0",
+      "title": "Executable skeleton and external-world fixtures",
+      "depends_on": [],
+      "human_approval_between_internal_tasks": false,
+      "acceptance_ids": [
+        "A01",
+        "A02",
+        "A03",
+        "A04"
+      ]
+    },
+    {
+      "id": "M1",
+      "title": "Contracts, source identity and evidence",
+      "depends_on": [
+        "M0"
+      ],
+      "human_approval_between_internal_tasks": false,
+      "acceptance_ids": [
+        "A05",
+        "A06",
+        "A07",
+        "A08",
+        "A09",
+        "A10",
+        "A11"
+      ]
+    },
+    {
+      "id": "M2",
+      "title": "Enforced authority and sandbox execution",
+      "depends_on": [
+        "M1"
+      ],
+      "human_approval_between_internal_tasks": false,
+      "acceptance_ids": [
+        "A12",
+        "A13",
+        "A14",
+        "A15",
+        "A16",
+        "A17",
+        "A18",
+        "A19"
+      ]
+    },
+    {
+      "id": "M3",
+      "title": "Scientific evaluation and negative-result integrity",
+      "depends_on": [
+        "M2"
+      ],
+      "human_approval_between_internal_tasks": false,
+      "acceptance_ids": [
+        "A20",
+        "A21",
+        "A22",
+        "A23",
+        "A24",
+        "A25",
+        "A26",
+        "A27"
+      ]
+    },
+    {
+      "id": "M4",
+      "title": "Bounded coding-agent integration",
+      "depends_on": [
+        "M3"
+      ],
+      "human_approval_between_internal_tasks": false,
+      "acceptance_ids": [
+        "A28",
+        "A29",
+        "A30",
+        "A31"
+      ]
+    },
+    {
+      "id": "M5",
+      "title": "Durable campaign loop and recovery",
+      "depends_on": [
+        "M4"
+      ],
+      "human_approval_between_internal_tasks": false,
+      "acceptance_ids": [
+        "A32",
+        "A33",
+        "A34",
+        "A35",
+        "A36",
+        "A37",
+        "A38"
+      ]
+    },
+    {
+      "id": "M6",
+      "title": "Adoption, evidence export and independent audit",
+      "depends_on": [
+        "M5"
+      ],
+      "human_approval_between_internal_tasks": false,
+      "acceptance_ids": [
+        "A39",
+        "A40",
+        "A41",
+        "A42",
+        "A43",
+        "A44",
+        "A45",
+        "A46"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+# Proposed fixture envelope, not an operator authorization.
+policy_version: "0.1"
+envelope: synthetic-offline
+profile: development
+allowed_data_classes: [public_synthetic]
+allow_live_model_calls: false
+allow_gpu_jobs: false
+allow_network_during_campaign: false
+allow_original_project_writes: false
+allow_evaluator_writes: false
+allow_controller_writes: false
+allow_external_publication: false
+allow_host_privileged_operations: false
+limits:
+  simultaneous_tasks: 2
+  attempts_per_campaign: 20
+  task_wall_seconds: 120
+  campaign_job_wall_seconds_total: 1200
+  task_memory_mib: 512
+  campaign_artifacts_mib: 256
+# Values are deliberately small for fixture programs, not provider/container installation.
+# Actual enforcement must be measured and reported; development is NOT an isolation profile.
+# A deployed policy is owned by the operator/controller and cannot be changed by a worker.

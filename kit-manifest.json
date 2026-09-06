@@ -1,0 +1,105 @@
+{
+  "kind": "specification_kit_integrity_manifest",
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 204,
+      "sha256": "6efc68bb3354d0530908ec45c1890f9c356a4607f34b1ca0889bba65f037ed4d"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 3742,
+      "sha256": "f7d427937ef74dc71c917c2c2025be7a24cea6118a67321a8067b3fff685557d"
+    },
+    {
+      "path": "CLAUDE.md",
+      "bytes": 220,
+      "sha256": "bd1f287d4d8a0a134b9c27717a0e568d64ddfd3f3b35e50d43ea13ced0ef6d6e"
+    },
+    {
+      "path": "README.md",
+      "bytes": 4034,
+      "sha256": "2aab712ff1d155cc0b45ccfece118ec76295c291562f84913faffc57e11a1037"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "bytes": 12421,
+      "sha256": "d857c846ec4a0915ae16c57d5f9ac44b38dd7b6cfe7bee35cb20a80f5a327ed9"
+    },
+    {
+      "path": "docs/BUILD.md",
+      "bytes": 10914,
+      "sha256": "d2a01961d8cf51c57f815cf28e965b67a2f9ee0f912a0efa3032b16d49c787fe"
+    },
+    {
+      "path": "docs/PRODUCT.md",
+      "bytes": 5253,
+      "sha256": "7e9924470d4b8fc2ecc0862b0e308b3c00fe94945ecf4b9f14b087c47ddc9b52"
+    },
+    {
+      "path": "docs/PROTOCOL.md",
+      "bytes": 4824,
+      "sha256": "d61b949f4f90542b3e18bd28d5031a4dcb3c698417838cfb88febe9b4805a567"
+    },
+    {
+      "path": "docs/SCIENCE.md",
+      "bytes": 5828,
+      "sha256": "31d4baee4efce883da7d9ad0423052405afba9db2cb03c6eecb64c83deb0cdc4"
+    },
+    {
+      "path": "docs/SECURITY.md",
+      "bytes": 7187,
+      "sha256": "882a6651aa0b5aa5aad62c318a7c42e6310096645193bd43b10d57a2f5491558"
+    },
+    {
+      "path": "docs/SOURCES.md",
+      "bytes": 3151,
+      "sha256": "d25d69b09a8cdcd39d65b2813eed43fff33bbe6d0baa21f28146b5434fd1fb74"
+    },
+    {
+      "path": "examples/campaign.yaml",
+      "bytes": 978,
+      "sha256": "5954dba53529df6ba0788740446cff16cf5121897afbc2b13bf98f1707c622f4"
+    },
+    {
+      "path": "examples/local-policy.yaml",
+      "bytes": 886,
+      "sha256": "5bd3e6a94b061043209b0e6d7069941bfa0be34254b68393444b9c676d6eb720"
+    },
+    {
+      "path": "examples/project.sidecar.yaml",
+      "bytes": 804,
+      "sha256": "1d65b027a929c87b230bb93049cf4ff56c2524fd92e7370e18bb4bc09de8d87e"
+    },
+    {
+      "path": "prompts/AUDIT.md",
+      "bytes": 2469,
+      "sha256": "451a39de10571f4ac94a87b80e1d4a02e532d3460b14c816dcaf48a32106ff27"
+    },
+    {
+      "path": "prompts/BOOTSTRAP.md",
+      "bytes": 4227,
+      "sha256": "a282ca502bd5887865a3aae0c1c1699f3235babe6afa355ae361cbf627f91b6b"
+    },
+    {
+      "path": "prompts/RESUME.md",
+      "bytes": 760,
+      "sha256": "1c32683639f0e023721bb02ffc3de7ac38ea96671bb4f45829a94da3da5b7d49"
+    },
+    {
+      "path": "specs/acceptance.json",
+      "bytes": 12711,
+      "sha256": "f3acb07d771d36daad51fbb1f831c6698df55a359629fa6bb5b146a5bf42d05a"
+    },
+    {
+      "path": "specs/milestones.json",
+      "bytes": 2277,
+      "sha256": "2a03df8061af777e425938f03cc8a3f7374b9026610c885c652f255c9b19766e"
+    },
+    {
+      "path": "tools/validate_pack.py",
+      "bytes": 3369,
+      "sha256": "8c16b1b6d89adc18904d75c02b8150a8322ae2d87be6b7ecc0ad9b4af894e7f3"
+    }
+  ]
+}
