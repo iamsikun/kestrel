@@ -1,5 +1,32 @@
 # Build state
 
+Local installation (2026-09-07): user requested installation and an empty lab at
+`/Users/iamsikun/research/sklab`. Built source revision
+`28ec895ee6335975ee9423a343ffcf70d337984e` with `uv build --offline` (exit 0),
+then installed the wheel with `uv tool install --offline --no-config --no-build
+--no-index --find-links /private/tmp/kestrel-wheelhouse --python
+/Users/iamsikun/research/kestrel/.venv/bin/python
+/Users/iamsikun/research/kestrel/dist/kestrel_research_runtime-0.1.0-py3-none-any.whl`
+(exit 0). `kestrel lab init /Users/iamsikun/research/sklab`, `kestrel doctor`,
+and `kestrel --version` passed (exit 0); executable is
+`/Users/iamsikun/.local/bin/kestrel`, version 0.1.0. Lab mode is 0700 and operator
+token mode is 0600; token contents were not displayed. No projects enrolled.
+Clean-wheel installation and installed offline demo: `tests/test_install.py -q`
+with KESTREL_WHEEL and KESTREL_WHEELHOUSE set to the above inputs passed (1 test,
+exit 0). Initial sandboxed run failed with uncertain fixture termination (exit 1);
+rerun with approved process-inspection access passed. Initial receipts:
+`/private/tmp/kestrel-sklab-install-evidence.json` and
+`/private/tmp/kestrel-sklab-install.xml`. Passing receipts and SHA256:
+- `/private/tmp/kestrel-sklab-install-verified.json`:
+  `24664c55b042c8e113de1e0c7c324673e85f9ba234d36c03b3ef9d49d39fb1fd`
+- `/private/tmp/kestrel-sklab-install-verified.xml`:
+  `ea7f6570188200f5d8dc659973c1e0ee7b094e904d53c1fc94c069d81637345b`
+- Wheel: `e33177f6c7f4cdb14a4c512ce5564d3843707bea5621a709a79e2625f82eac79`.
+No runtime changes; full static/core/state-machine/adversarial/isolation gates were
+not rerun for installation. Prior deployment blockers remain. Installation task
+complete; next action when requested is lab project setup using the documented
+CLI. No live campaign or controller service was deployed.
+
 Telegram implementation planning (2026-09-07): operator selected Telegram and
 requested no implementation. [Implementation plan](docs/proposals/TELEGRAM_IMPLEMENTATION_PLAN.md)
 defines one private chat, deterministic briefings, read-only source integration,
