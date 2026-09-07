@@ -2,9 +2,13 @@
 
 The mock and replay adapters use one typed `AgentTask` / `AgentResult` boundary.
 Raw recorded Codex JSONL and serialized Claude result readers are implemented;
-tests use explicitly labeled synthetic wire fixtures. They do not invoke a model,
-execute suggested tools, run project hooks, or create permissions. Historical
-usage in replay events is distinct from new calls and tokens, which are zero.
+tests use explicitly labeled synthetic wire fixtures. Their offline execution uses
+the same approved TaskSpec/Attempt ledger as the mock, with reserved budgets,
+durable outputs or failure diagnostics, and conservative interruption recovery.
+They do not invoke a model, execute suggested tools, run project hooks, or create
+permissions. Historical usage in replay events is distinct from new calls and
+tokens, which are zero. The finite trusted parser measures elapsed time after
+return; it is not a hard timer for an arbitrary provider callback.
 
 Checked official sources on 2026-09-06:
 

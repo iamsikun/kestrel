@@ -16,7 +16,8 @@ uv run --offline kestrel demo --offline
 ```
 
 The demo creates an external temporary lab, two independent Git repositories,
-two frozen campaigns and four real subprocess attempts. It preserves the original
+two frozen campaigns, two tracked offline agent attempts and four real subprocess
+attempts. It preserves the original
 brief and source, recomputes numerical error and finite integer counterexamples,
 rejects worker-supplied favorable metrics, and completes with two `not_supported`
 findings. The JSON output identifies the retained temporary directory and portable
@@ -46,6 +47,7 @@ kestrel --lab /absolute/new/lab campaign approve CAMPAIGN_ID --digest EXACT_DIGE
 kestrel --lab /absolute/new/lab campaign run CAMPAIGN_ID --approval APPROVAL_ID
 kestrel --lab /absolute/new/lab campaign status CAMPAIGN_ID
 kestrel --lab /absolute/new/lab campaign report CAMPAIGN_ID
+kestrel --lab /absolute/new/lab project conformance --manifest /external/project.sidecar.json --campaign CAMPAIGN_ID --approval APPROVAL_ID
 kestrel --lab /absolute/new/lab evidence export CAMPAIGN_ID --output /external/packet.zip
 ```
 
@@ -53,6 +55,15 @@ Campaign proposal currently supplies the built-in finite numerical/counterexampl
 protocol for generated fixture sources. General sidecar registration, the typed
 controller and Docker driver are usable components; a general isolated campaign
 application and separately operated deployment are not enabled by this CLI.
+
+Active conformance executes or reuses the approved tiny fixture campaign and checks
+its real receipts, artifact identities, response schema, failure handling and
+output-path restrictions. Running `project conformance --manifest ...` without a
+campaign performs static validation only and says that active checks were not run.
+Each approved fixture campaign reserves one offline agent attempt and two scientific
+trials (three attempts, eleven runtime seconds, zero provider calls/tokens).
+The agent proposal must match the frozen candidate template; failure diagnostics
+cannot authorize a different candidate or become a scientific observation.
 
 Approval requires the developer lab's generated operator token, and binds the
 contract digest, principal, policy and expiry. This tests authority logic in a

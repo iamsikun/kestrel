@@ -33,7 +33,8 @@ class DenyHeavyDependencies(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, DenyHeavyDependencies())
 modules = ['kestrel', 'kestrel.application', 'kestrel.controller', 'kestrel.contracts',
            'kestrel.projects', 'kestrel.artifacts', 'kestrel.runners',
-           'kestrel.evaluation', 'kestrel.agents', 'kestrel.cli']
+           'kestrel.evaluation', 'kestrel.agents', 'kestrel.agent_execution',
+           'kestrel.provider_records', 'kestrel.conformance', 'kestrel.cli']
 locations = {name: str(pathlib.Path(importlib.import_module(name).__file__).resolve())
              for name in modules}
 environment = pathlib.Path(sys.prefix).resolve()
@@ -249,7 +250,9 @@ def test_built_wheel_installs_cleanly_and_runs_actual_external_offline_demo(tmp_
         assert report["finding"] == "not_supported"
         assert report["budget_reserved"]["provider_calls"] == 0
         assert report["adversarial_isolation"] is False
-        assert len(report["attempts"]) == 2
+        assert len(report["attempts"]) == 3
+        assert sum(a["backend"] == "development" for a in report["attempts"]) == 2
+        assert sum(a["backend"] == "offline-agent" for a in report["attempts"]) == 1
     projects = [path for path in (demo_root / "fixtures").iterdir() if path.is_dir()]
     assert len(projects) == 2
     assert all(not path.resolve().is_relative_to(checkout) for path in projects)

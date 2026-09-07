@@ -56,3 +56,23 @@
   Initial parallel component verification is not evidence of a global host-wide
   resource ceiling. Final release evidence is collected serially. Per-controller
   slot reservations cannot constrain independently started controllers or other apps.
+
+## Final coverage review refinements
+
+- The deterministic agent is approved, reserved and recorded through the same
+  TaskSpec/Attempt ledger as execution. Proposal creation itself freezes the known
+  fixture template without running an agent. An offline agent task must confirm
+  that template before its two dependent scientific trials can run. The campaign
+  declares three attempts and eleven reserved runtime seconds, with zero provider
+  calls/tokens. Agent work is not an evaluated scientific trial or replicate.
+- Mock/replay failures and malformed outputs require durable diagnostics and
+  conservative recovery. Parser-only failure tests do not establish recorded
+  operational outcomes. Recorded provider bytes remain untrusted data; this path
+  cannot invoke arbitrary provider callbacks, project imports, tools or live calls.
+- Active project conformance uses an explicitly approved existing fixture campaign
+  and its bounded execution/evidence path. Static sidecar validation remains
+  available before approval. Arbitrary project execution is still unavailable
+  through the developer CLI; conformance cannot bypass that restriction.
+- A blocked branch leaves the campaign pending while independently ready work
+  finishes. Resuming it preserves the completed attempt and existing approval;
+  missing work does not become a failed scientific finding.

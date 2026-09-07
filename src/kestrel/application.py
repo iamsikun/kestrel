@@ -12,7 +12,8 @@ import time
 import uuid
 from pathlib import Path
 
-from kestrel.agents import AgentTask, MockAgent
+from kestrel.agent_execution import AgentPlan, OfflineAgents
+from kestrel.agents import Proposal
 from kestrel.artifacts import Artifacts, _safe_read
 from kestrel.contracts import (
     Brief,
@@ -62,7 +63,7 @@ class Lab:
             raise ValueError("Initialize this external developer lab first")
         for relative in ("lab.json", "definition", "runtime", "definition/projects.sqlite",
                          "runtime/controller.sqlite", "runtime/controller.sqlite-wal",
-                         "runtime/controller.sqlite-shm", "runtime/jobs", "runtime/artifacts"):
+                         "runtime/controller.sqlite-shm", "runtime/jobs", "runtime/artifacts", "runtime/agents"):
             target = self.root / relative
             if target.is_symlink() or target.resolve() != target:
                 raise ValueError("Developer lab state paths must not redirect through symlinks")
@@ -70,6 +71,7 @@ class Lab:
         self.store = Artifacts(self.root / "runtime" / "artifacts")
         self.controller = Controller(self.root / "runtime" / "controller.sqlite")
         self.driver = DevelopmentDriver(self.root / "runtime" / "jobs")
+        self.agents = OfflineAgents(self.controller, self.store, self.root / "runtime" / "agents")
 
     def close(self) -> None:
         self.controller.close()
@@ -136,18 +138,15 @@ class Lab:
                        hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest(),
                        "platform": platform.platform(), "profile": "development"}
         environment_record = self._put(environment, producer="controller:environment")
-        proposal_task = AgentTask(task_id=f"proposal-{uuid.uuid4().hex}",
-                                  contract_digest=digest({"brief": brief, "project": record["source_digest"]}),
-                                  role="builder", allowed_paths=["config.json"],
-                                  max_output_bytes=65536, max_events=10, max_calls=0, max_tokens=0,
-                                  data_classification="public_synthetic")
-        agent = MockAgent()
-        proposal = agent.run(proposal_task)
-        proposal_record = self._put(proposal.model_dump(mode="json"), producer="mock:proposal")
+        # Preparing this finite fixture template is not an agent invocation.
+        # Its actual bounded mock attempt runs only after explicit approval.
+        planned = [Proposal(path="config.json", content='{"method":"inferior"}')]
+        agent_plan = AgentPlan(expected_proposals=planned)
+        plan_record = self._put(agent_plan, producer="controller:agent-plan")
         recipes = []
         for method in ("baseline", "inferior"):
             changes = {} if method == "baseline" else {
-                p.path: p.content.encode() for p in proposal.proposals
+                p.path: p.content.encode() for p in planned
             }
             workspace = self.projects.candidate(project_id, f"proposal-{uuid.uuid4().hex}", changes)
             source = self.store.put_bytes(source_payload(workspace), producer="controller:source",
@@ -168,25 +167,30 @@ class Lab:
             target_claim="The predeclared treatment improves the finite-domain metric",
             baseline=recipes[0].identity, candidates=[recipes[1].identity], recipes=recipes,
             allowed_interventions=["config.json method baseline to inferior"],
-            controls={"domain": "fixed", "search": "none", "proposal": proposal_record["digest"],
-                      "provider_calls": agent.provider_calls, "kind": kind},
+            controls={"domain": "fixed", "search": "none", "agent_plan": plan_record["digest"],
+                      "provider_calls": 0, "kind": kind},
             data=data_record["digest"], evaluator=evaluator_record["digest"],
             analysis=analysis_record["digest"], metric=evaluator["method"], practical_threshold=0.0,
             selection_rule="Predeclared baseline and inferior candidate; retain all outcomes",
             stopping_rule="evaluate_each_once", uncertainty_unit="entire finite fixture domain",
             accepted_findings=["supported_in_scope", "not_supported", "inconclusive"],
-            profile="development", capabilities=["execute"], data_classification="public_synthetic",
-            budget=Budget(attempts=2, runtime_seconds=10, provider_calls=0, tokens=0),
+            profile="development", capabilities=["execute", "offline_agent"], data_classification="public_synthetic",
+            budget=Budget(attempts=3, runtime_seconds=11, provider_calls=0, tokens=0),
         )
         campaign_id = self.controller.propose(contract.model_dump(mode="json"))
         parents = [contract.data, contract.evaluator, contract.analysis, environment_record["digest"],
-                   proposal_record["digest"], *[r.source for r in recipes]]
+                   plan_record["digest"], *[r.source for r in recipes]]
         self._put(contract.model_dump(mode="json"), producer=f"contract:{campaign_id}", lineage=parents)
+        agent_task = TaskSpec(id=f"agent-{campaign_id}", campaign_id=campaign_id,
+                              recipe=plan_record["digest"], operation="offline_agent", profile="development",
+                              budget={"runtime_seconds": 1, "provider_calls": 0, "tokens": 0},
+                              resources={"cpu": 1})
+        self.controller.add_task(campaign_id, agent_task.model_dump(mode="json"))
         for index, recipe in enumerate(recipes):
             task = TaskSpec(id=f"task-{campaign_id}-{index}", campaign_id=campaign_id,
                             recipe=recipe.identity, profile="development",
                             budget={"runtime_seconds": 5, "provider_calls": 0, "tokens": 0},
-                            resources={"cpu": 1})
+                            resources={"cpu": 1}, dependencies=[agent_task.id])
             self.controller.add_task(campaign_id, task.model_dump(mode="json"))
         self.controller.record_selection(campaign_id, candidate_id=recipes[1].identity,
                                          rationale=contract.selection_rule, observation_ids=[])
@@ -194,9 +198,10 @@ class Lab:
         return campaign_id
 
     def approve(self, campaign_id: str, contract_digest: str, token: str) -> str:
+        capabilities = self.controller.campaign(campaign_id)["contract"]["capabilities"]
         return self.controller.approve(campaign_id, token=token, contract_digest=contract_digest,
                                        principal="developer", expires_at=time.time() + 3600,
-                                       capabilities=["execute"])
+                                       capabilities=[name for name in ("execute", "offline_agent") if name in capabilities])
 
     def _inspection(self, attempt: dict) -> dict:
         status = self.driver.reconcile(attempt["backend_label"])
@@ -289,9 +294,12 @@ class Lab:
             raise PermissionError("Only developer fixtures are enabled by this lab application")
         if campaign["state"] == "FROZEN":
             self.controller.start_confirmation(campaign_id)
+        self.agents.execute_ready(campaign_id, approval_id)
         # Reconcile existing attempts first; never substitute new attempt IDs on restart.
         existing = self.controller.attempts(campaign_id)
         for old in existing:
+            if old["backend"] == "offline-agent":
+                continue
             if old["state"] in TERMINAL and not old["resources_held"]:
                 continue
             current = self.controller.reconcile(old["id"], lambda _: self._inspection(old))
@@ -319,8 +327,13 @@ class Lab:
                 raise
         for attempt in launched:
             self._finish(campaign_id, attempt, contract)
+        if any(task["state"] not in TERMINAL for task in self.controller.tasks(campaign_id)):
+            # A blocked branch retains its state while independently ready work
+            # completes. Do not manufacture a terminal campaign diagnosis.
+            return self.report(campaign_id)
         results = [r for r in self.controller.results(campaign_id)
-                   if self.controller.attempt(r["attempt_id"])["state"] == "SUCCEEDED"]
+                   if "observation" in r["record"]
+                   and self.controller.attempt(r["attempt_id"])["state"] == "SUCCEEDED"]
         observations = {r["record"]["recipe"]: (r["record"]["observation"], Observation.model_validate(
             parse_json(self.store.read(r["record"]["observation"])))) for r in results}
         if len(observations) == len(contract.recipes):
@@ -329,7 +342,9 @@ class Lab:
             analysis = comparison(baseline, treatment, contract.practical_threshold)
             analysis.update(campaign_id=campaign_id, observations=[base_id, treatment_id])
             artifact = self._put(analysis, producer=f"comparison:{campaign_id}",
-                                 lineage=[base_id, treatment_id, contract.analysis, digest(contract)],
+                                 lineage=[base_id, treatment_id, contract.analysis, digest(contract),
+                                          *[a["result"]["execution"] for a in self.controller.attempts(campaign_id)
+                                            if a["backend"] == "offline-agent" and a["result"]]],
                                  assurance="independently_recomputed")
             self.controller.complete(campaign_id, execution_status="succeeded", protocol_status="valid",
                                       finding=analysis["finding"].upper(), evidence_ids=[artifact["digest"]])
@@ -384,6 +399,9 @@ class Lab:
                 self.controller.cancel_task(task["id"], "Developer requested cancellation")
         for attempt in self.controller.attempts(campaign_id):
             if attempt["state"] in TERMINAL and not attempt["resources_held"]:
+                continue
+            if attempt["backend"] == "offline-agent":
+                self.agents.cancel(attempt["id"])
                 continue
             status = self.driver.cancel(attempt["backend_label"])
             current = self.controller.reconcile(attempt["id"], lambda _: self._inspection(attempt))

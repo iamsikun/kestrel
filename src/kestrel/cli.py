@@ -10,6 +10,7 @@ from pathlib import Path
 
 from kestrel import __version__
 from kestrel.application import Lab, demo
+from kestrel.conformance import run_conformance
 from kestrel.projects import load_sidecar
 from kestrel.runners import DriverError
 
@@ -43,6 +44,10 @@ def parser() -> argparse.ArgumentParser:
     project.add_parser("validate").add_argument("project")
     conformance = project.add_parser("conformance")
     conformance.add_argument("--manifest", type=Path, required=True)
+    conformance.add_argument("--campaign", help="run or inspect this approved fixture campaign")
+    conformance.add_argument("--approval", help="approval bound to the supplied campaign")
+    conformance.add_argument("--profile", choices=("development", "isolated-local"),
+                             default="development")
     campaign = commands.add_parser("campaign").add_subparsers(dest="action", required=True)
     propose = campaign.add_parser("propose")
     propose.add_argument("--project", required=True)
@@ -76,8 +81,15 @@ def main(argv: list[str] | None = None) -> int:
                 result = {"lab": str(lab.root), "profile": "development",
                           "operator_token_file": str(lab.root / "operator.token")}
         elif args.command == "project" and args.action == "conformance":
-            result = {"static_sidecar_valid": True, "manifest": load_sidecar(args.manifest),
-                      "active_probe": "not run; registration does not grant execution"}
+            if args.campaign is None and args.approval is None:
+                result = {"static_sidecar_valid": True, "manifest": load_sidecar(args.manifest),
+                          "active_probe": "not run; supply --lab, --campaign and --approval for fixture checks"}
+            else:
+                if args.lab is None or args.campaign is None or args.approval is None:
+                    raise ValueError("Active conformance requires --lab, --campaign and --approval")
+                with Lab(args.lab) as lab:
+                    result = run_conformance(lab, args.manifest, args.campaign, args.approval,
+                                             profile=args.profile)
         else:
             if args.lab is None:
                 raise ValueError("Supply --lab PATH before the command")

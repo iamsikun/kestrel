@@ -32,6 +32,8 @@ def project(tmp_path):
     registry.close()
 
 
+@pytest.mark.acceptance("A05")
+@pytest.mark.acceptance("A08")
 def test_nonexecuting_complete_source_registration(project, tmp_path):
     registry, source, manifest, value = project
     sentinel = tmp_path / "must-not-exist"
@@ -120,14 +122,18 @@ def test_unsafe_sources_rejected(project, tmp_path, attack):
     assert registry.db.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0
 
 
+@pytest.mark.acceptance("A08")
 def test_source_changes_change_identity_and_snapshot_tampering_fails(project):
     registry, source, manifest, value = project
     first = registry.register(manifest, snapshot_dirty=True)
+    (source / "config.json").write_text('{"offset":3}')
     (source / "new.txt").write_text("tracked or untracked bytes count")
     value["project_id"] = "numerical-two"
     manifest.write_text(json.dumps(value))
     second = registry.register(manifest, snapshot_dirty=True)
     assert first["source_digest"] != second["source_digest"]
+    assert (Path(second["snapshot_path"]) / "config.json").read_text() == '{"offset":3}'
+    assert (Path(second["snapshot_path"]) / "new.txt").read_text() == "tracked or untracked bytes count"
     stored = Path(first["snapshot_path"]) / "config.json"
     stored.chmod(0o644)
     stored.write_text("corrupt")

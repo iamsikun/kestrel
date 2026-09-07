@@ -150,7 +150,7 @@ class TaskSpec(StrictModel):
     id: Identifier
     campaign_id: Identifier
     recipe: Digest
-    operation: Literal["execute"] = "execute"
+    operation: Literal["execute", "offline_agent"] = "execute"
     dependencies: list[Identifier] = Field(default_factory=list)
     max_attempts: int = Field(default=1, ge=1, le=20)
     profile: Literal["development", "isolated-local"]

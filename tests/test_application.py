@@ -27,8 +27,10 @@ def test_real_offline_campaigns_and_negative_findings(tmp_path):
         assert report["finding"] == "not_supported"
         assert report["assurance"] == "independently_recomputed"
         assert report["evidence"][0]["analysis"]["difference"] == difference
-        assert len(report["attempts"]) == 2
-        assert report["budget_reserved"]["attempts"] == 2
+        assert len(report["attempts"]) == 3
+        assert sum(a["backend"] == "development" for a in report["attempts"]) == 2
+        assert sum(a["backend"] == "offline-agent" for a in report["attempts"]) == 1
+        assert report["budget_reserved"]["attempts"] == 3
         assert report["budget_reserved"]["provider_calls"] == 0
         assert all(a["stopped_confirmed"] and not a["resources_held"] for a in report["attempts"])
     assert Path(result["evidence_packet"]).is_file()

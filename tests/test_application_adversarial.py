@@ -33,6 +33,14 @@ def file_identities(root: Path) -> dict[str, str]:
     }
 
 
+def worker_attempts(attempts: list[dict]) -> list[dict]:
+    return [attempt for attempt in attempts if attempt["backend"] == "development"]
+
+
+def worker_results(results: list[dict]) -> list[dict]:
+    return [result for result in results if "observation" in result["record"]]
+
+
 @pytest.fixture
 def prepared(tmp_path):
     manifests = generate(tmp_path / "external-projects", framework_root())
@@ -53,7 +61,7 @@ def prepared(tmp_path):
     # trusted fixture supervisor enforces its own bounded deadline; also wait
     # for every actual dispatch before temporary-directory cleanup.
     with Lab(root) as cleanup:
-        for attempt in cleanup.controller.attempts(campaign):
+        for attempt in worker_attempts(cleanup.controller.attempts(campaign)):
             status = cleanup.driver.inspect(attempt["backend_label"])
             if status.state != "absent" and not status.stopped:
                 status = cleanup.driver.wait(attempt["backend_label"], timeout=7)
@@ -78,15 +86,16 @@ def test_actual_offline_campaign_retains_negative_result_and_original_project(pr
         assert analysis["baseline"] == 0
         assert analysis["treatment"] == 4
         assert analysis["difference"] == 4
-        for result in lab.controller.results(campaign):
+        for result in worker_results(lab.controller.results(campaign)):
             raw = json.loads(lab.store.read(result["record"]["raw"]))
             observation = json.loads(lab.store.read(result["record"]["observation"]))
             assert raw["self_reported_metric"] == -999
             assert observation["self_reported_metric_rejected"] is True
             assert observation["metric"] in {0, 4}
-        assert report["budget_reserved"]["attempts"] == 2
+        assert report["budget_reserved"]["attempts"] == 3
         assert report["budget_reserved"]["provider_calls"] == 0
-        assert len(report["attempts"]) == 2
+        assert len(report["attempts"]) == 3
+        assert len(worker_attempts(report["attempts"])) == 2
         assert file_identities(original) == before
 
 
@@ -98,6 +107,38 @@ def test_run_with_wrong_approval_dispatches_nothing(prepared):
             lab.run(campaign, "worker-invented-approval")
         assert lab.controller.attempts(campaign) == []
         assert list(lab.driver.state_dir.iterdir()) == []
+        assert file_identities(original) == before
+
+
+@pytest.mark.acceptance("A38")
+def test_real_ready_fixture_runs_while_independent_branch_is_blocked(prepared):
+    root, campaign, approval, original, before = prepared
+    with Lab(root) as lab:
+        first, second = [task for task in lab.controller.tasks(campaign)
+                         if task["spec"]["operation"] == "execute"]
+        frozen_digest = lab.controller.campaign(campaign)["digest"]
+        lab.controller.block_task(first["id"], "Synthetic input awaits an external decision")
+        pending = lab.run(campaign, approval)
+        assert pending["state"] == "CONFIRMING"
+        assert pending["execution"] == "pending"
+        assert pending["validity"] == "incomplete"
+        assert lab.controller.task(first["id"])["state"] == "BLOCKED"
+        assert lab.controller.task(second["id"])["state"] == "SUCCEEDED"
+        assert len(pending["attempts"]) == 2
+        completed, = worker_attempts(pending["attempts"])
+        assert completed["task_id"] == second["id"]
+        assert completed["stopped_confirmed"] and not completed["resources_held"]
+        assert worker_results(lab.controller.results(campaign))[0]["record"]["raw"]
+        assert pending["budget_reserved"]["attempts"] == 2
+        assert completed["approval_id"] == approval
+        assert lab.controller.campaign(campaign)["digest"] == frozen_digest
+        lab.controller.unblock_task(first["id"])
+        report = lab.run(campaign, approval)
+        assert report["state"] == "COMPLETE"
+        assert report["finding"] == "not_supported"
+        assert len(report["attempts"]) == 3
+        assert lab.controller.attempt(completed["id"]) == completed
+        assert report["budget_reserved"]["attempts"] == 3
         assert file_identities(original) == before
 
 
@@ -133,9 +174,9 @@ def test_corrupted_adapter_response_cannot_publish_a_verified_observation(
         assert report["validity"] == "invalid"
         assert report["finding"] == "inconclusive"
         assert report["assurance"] == "unverified"
-        assert len(report["attempts"]) == 2
-        assert all(attempt["state"] == "FAILED" for attempt in report["attempts"])
-        assert lab.controller.results(campaign) == []
+        assert len(report["attempts"]) == 3
+        assert all(attempt["state"] == "FAILED" for attempt in worker_attempts(report["attempts"]))
+        assert worker_results(lab.controller.results(campaign)) == []
         assert not any(lab.controller.resources_used().values())
 
 
@@ -170,8 +211,8 @@ def test_complete_response_with_unsafe_or_missing_file_fails_atomic_publication(
         assert report["state"] == "COMPLETE"
         assert report["validity"] == "invalid"
         assert report["assurance"] == "unverified"
-        assert lab.controller.results(campaign) == []
-        assert all(attempt["state"] == "FAILED" for attempt in report["attempts"])
+        assert worker_results(lab.controller.results(campaign)) == []
+        assert all(attempt["state"] == "FAILED" for attempt in worker_attempts(report["attempts"]))
 
 
 @pytest.mark.acceptance("A32")
@@ -192,7 +233,7 @@ def test_controller_crash_before_or_after_real_dispatch_reuses_stable_attempt(
             patch.setattr(first.driver, "launch", crash_window)
             with pytest.raises(SimulatedControllerCrash):
                 first.run(campaign, approval)
-        attempts_before = first.controller.attempts(campaign)
+        attempts_before = worker_attempts(first.controller.attempts(campaign))
         assert len(attempts_before) == 1
         assert attempts_before[0]["state"] == "STARTING"
         existing_label = attempts_before[0]["backend_label"]
@@ -209,11 +250,11 @@ def test_controller_crash_before_or_after_real_dispatch_reuses_stable_attempt(
         report = restored.run(campaign, approval)
         assert report["finding"] == "not_supported"
         assert report["execution"] == "succeeded"
-        assert len(report["attempts"]) == 2
-        assert report["attempts"][0]["id"] == attempts_before[0]["id"]
+        assert len(report["attempts"]) == 3
+        assert worker_attempts(report["attempts"])[0]["id"] == attempts_before[0]["id"]
         assert (existing_label in launched_labels) is not crash_after_dispatch
         assert len(list(restored.driver.state_dir.glob("*/dispatch.json"))) == 2
-        assert report["budget_reserved"]["attempts"] == 2
+        assert report["budget_reserved"]["attempts"] == 3
         assert file_identities(original) == before
 
 
@@ -228,13 +269,14 @@ def test_crash_after_verification_result_commit_completes_without_new_execution(
 
         def commit_then_crash(attempt_id, record):
             original_record(attempt_id, record)
-            raise SimulatedControllerCrash()
+            if "observation" in record:
+                raise SimulatedControllerCrash()
 
         with monkeypatch.context() as patch:
             patch.setattr(first.controller, "record_result", commit_then_crash)
             with pytest.raises(SimulatedControllerCrash):
                 first.run(campaign, approval)
-        attempts = first.controller.attempts(campaign)
+        attempts = worker_attempts(first.controller.attempts(campaign))
         identifiers = [attempt["id"] for attempt in attempts]
         assert len(identifiers) == 2
         assert attempts[0]["state"] == "VERIFYING"
@@ -250,10 +292,10 @@ def test_crash_after_verification_result_commit_completes_without_new_execution(
         assert report["state"] == "COMPLETE"
         assert report["execution"] == "succeeded"
         assert report["finding"] == "not_supported"
-        assert [attempt["id"] for attempt in report["attempts"]] == identifiers
-        assert report["attempts"][0]["result"] == saved_result
+        assert [attempt["id"] for attempt in worker_attempts(report["attempts"])] == identifiers
+        assert worker_attempts(report["attempts"])[0]["result"] == saved_result
         assert all(attempt["state"] == "SUCCEEDED" for attempt in report["attempts"])
-        assert report["budget_reserved"]["attempts"] == 2
+        assert report["budget_reserved"]["attempts"] == 3
 
 
 @pytest.mark.acceptance("A19")
@@ -268,7 +310,7 @@ def test_revoked_approval_cannot_launch_a_reserved_attempt_after_restart(prepare
             with pytest.raises(SimulatedControllerCrash):
                 first.run(campaign, approval)
         first.controller.revoke(approval, token=(root / "operator.token").read_text())
-        original_id = first.controller.attempts(campaign)[0]["id"]
+        original_id = worker_attempts(first.controller.attempts(campaign))[0]["id"]
     with Lab(root) as restored:
 
         def forbidden_launch(_):
@@ -277,7 +319,7 @@ def test_revoked_approval_cannot_launch_a_reserved_attempt_after_restart(prepare
         monkeypatch.setattr(restored.driver, "launch", forbidden_launch)
         with pytest.raises(AuthorityError):
             restored.run(campaign, approval)
-        assert restored.controller.attempts(campaign)[0]["id"] == original_id
+        assert worker_attempts(restored.controller.attempts(campaign))[0]["id"] == original_id
         assert list(restored.driver.state_dir.iterdir()) == []
 
 
