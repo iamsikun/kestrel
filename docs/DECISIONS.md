@@ -386,7 +386,7 @@ remain unauthorized and undone.
   matrix, and an operator-facing README. Nothing there is installed, enabled or
   executed: it was written on macOS and has never run on any host. The measured
   cross-identity denials it is meant to produce are listed as commands that were
-  not run, so messaging acceptance conditions N-A05 and N-A12 stay unpassed.
+  not run, so messaging acceptance conditions N-A05 and N-A12D stay unpassed.
 - Two principals, both driven by oneshot units and timers rather than a bespoke
   daemon loop, so there is no untested long-running process to review. The local
   sender lease still prevents overlapping senders.

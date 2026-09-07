@@ -59,4 +59,4 @@ On the target Linux host, and under these exact identities:
    touching any research record.
 
 Until these are run and recorded on the target host, messaging acceptance
-conditions N-A05 and N-A12 are **not passed**.
+conditions N-A05 and N-A12D are **not passed**.

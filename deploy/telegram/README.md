@@ -9,7 +9,7 @@ and the operator runbook in
 They were written on macOS and have **never been executed on any host**. No unit
 was installed, no user or group was created, no file ownership was changed, and
 no egress rule was applied. The measured denials they are meant to produce —
-messaging acceptance conditions N-A05 and N-A12 — are therefore **unpassed**.
+messaging acceptance conditions N-A05 and N-A12D — are therefore **unpassed**.
 
 ## What the profile is trying to achieve
 

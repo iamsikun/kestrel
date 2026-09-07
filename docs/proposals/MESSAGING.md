@@ -1,5 +1,12 @@
 # Proposal: messaging and the personal research assistant
 
+**Implementation status, 2026-09-07.** The N0-N4 subset covered by the Telegram
+plan is implemented offline on `build/telegram-messaging`; N5 remote approval and
+N6 literature remain unimplemented and unauthorized. See
+[MESSAGING_VERIFICATION.md](../MESSAGING_VERIFICATION.md) for what is verified and
+what is explicitly unpassed. The proposal status below is the historical record of
+when this document was written.
+
 **Status: consolidated design proposal, 2026-09-07.** This incorporates Claude's
 initial draft and a review of the implemented runtime and official transport
 documentation. All new records, commands, defaults, and N0–N6 increments below are

@@ -35,7 +35,7 @@ No bot, credential, sent message, host service, deployment, live provider,
 permission change or push. Live Telegram operations fail closed behind
 `KESTREL_TELEGRAM_ACTIVATED`, which nothing in the codebase or test suite sets.
 `deploy/telegram/` has never been executed on any host, so messaging conditions
-N-A05 and N-A12 are unpassed, the live half of N-A19 is unpassed, and N-A20 is
+N-A05 and N-A12D are unpassed, the live half of N-A19 is unpassed, and N-A20 is
 deferred. Prior blockers A28, A30, A31 and A43 are unchanged. The demonstrated
 boundary is what each process is given, not what an operating system denies, and
 this author cannot also be the independent review.
@@ -102,7 +102,7 @@ exit 0; `python3 tools/validate_pack.py` exit 0; `git diff --check` exit 0;
 — 362 passed, 1 skipped (A28), 12 deselected, exit 0. Evidence:
 `/private/tmp/kestrel-telegram-messaging/core-t2.xml`.
 Only the offline scripted transport exists; nothing was sent and no bot,
-credential, service or deployment was created. N-A05 and N-A12 remain unpassed:
+credential, service or deployment was created. N-A05 and N-A12D remain unpassed:
 they need the Linux deployment profile and measured OS denial. Next action: T3,
 the typed Telegram HTTPS adapter and pairing workflow against fake HTTP.
 

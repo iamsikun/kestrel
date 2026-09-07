@@ -244,7 +244,7 @@ fixture in this repository. A skip here is an unsatisfied gate, not a pass.
 | Condition | Why it is not passed |
 |---|---|
 | N-A05 | Needs the Linux deployment profile installed and the cross-identity read and write denials actually measured |
-| N-A12 | Needs enforced egress restriction on the deployed host; a Python-side host check is not containment |
+| N-A12D | Needs enforced egress restriction measured on the deployed host under the actual service identity; the code-level half (N-A12) is tested offline, and a Python-side host check is not containment |
 | N-A19 (live half) | Fake-transport acceptance is not evidence about a real provider or device |
 | N-A20 | Deferred with the N6 literature increment |
 | A28, A30, A31, A43 | Pre-existing first-pilot blockers, unaffected by messaging |

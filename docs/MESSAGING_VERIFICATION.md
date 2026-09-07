@@ -152,7 +152,7 @@ Not verified, and explicitly unpassed:
 | Condition | Missing |
 |---|---|
 | N-A05 | The Linux deployment profile installed and cross-identity read/write denials actually measured |
-| N-A12 | Enforced egress restriction on a deployed host; a Python-side host check is not containment |
+| N-A12D | Enforced egress restriction measured on a deployed host under the actual service identity. The code-level half (N-A12) is tested offline; a Python-side host check is not containment |
 | N-A19 (live half) | Any evidence about a real provider, device, or person |
 | N-A20 | Deferred with the N6 literature increment |
 | A28, A30, A31, A43 | Pre-existing first-pilot blockers, unaffected by this work |
