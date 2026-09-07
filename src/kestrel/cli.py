@@ -17,6 +17,7 @@ from kestrel.conformance import run_conformance
 from kestrel.contracts import parse_json
 from kestrel.messaging import (
     Assistant,
+    CommandProcessor,
     MessagingError,
     MilestoneDefinition,
     init_messaging,
@@ -35,6 +36,7 @@ from kestrel.runners import DriverError
 from kestrel.telegram import (
     API_ASSUMPTIONS,
     API_DOCUMENTATION,
+    InboundPoller,
     Pairing,
     TelegramTransport,
     build_live_client,
@@ -51,6 +53,34 @@ def doctor() -> dict:
             "live_agent": "blocked: no authorized provider/credential integration",
             "gpu": "blocked: no authorized target hardware validation",
             "deployment": "not authorized or implemented"}
+
+
+def inbound_command(args, assistant) -> dict:
+    """Inbound polling and command processing. Only polling touches a network."""
+    identity = {name: assistant._meta(f"telegram_{name}")
+                for name in ("bot_id", "chat_id", "user_id")}
+    if any(value is None for value in identity.values()):
+        raise MessagingError("No Telegram chat is paired and confirmed")
+    epoch = int(assistant._meta("telegram_epoch", "1"))
+    with Gateway(args.messaging_root, owner="poller") as gateway:
+        if args.target == "poll":
+            client = build_live_client(args.credential_file, channel="telegram",
+                                       operation="notify inbound poll")
+            poller = InboundPoller(gateway, client, bot_identity=identity["bot_id"],
+                                   epoch=epoch, chat_id=int(identity["chat_id"]),
+                                   user_id=int(identity["user_id"]))
+            return {**poller.poll_once(now=time.time(), timeout=args.timeout),
+                    "authority": "reads inbound updates; applies nothing by itself"}
+        poller = InboundPoller(gateway, None, bot_identity=identity["bot_id"], epoch=epoch,
+                               chat_id=int(identity["chat_id"]),
+                               user_id=int(identity["user_id"]))
+        if args.target == "journal":
+            return {"pending": poller.pending(), "rejected": poller.rejections(),
+                    "cursor": poller.cursor(), "gaps": gateway.gaps(),
+                    "authority": "untrusted gateway journal, read only"}
+        return {**CommandProcessor(assistant, poller).process_pending(),
+                "authority": "attention and reply state only; no execution authority is "
+                             "reachable from an inbound message"}
 
 
 def build_transport(args, assistant):
@@ -205,6 +235,8 @@ def messaging_command(args) -> dict:
                         "authority": "verifies the credential still names the enrolled bot"}
             pairing = Pairing(assistant, client)
             return pairing.begin() if args.target == "begin" else pairing.poll()
+        if args.action == "inbound":
+            return inbound_command(args, assistant)
         if args.action == "ack":
             return {**assistant.acknowledge(args.reference), "authority": "attention only"}
         if args.action == "snooze":
@@ -353,6 +385,13 @@ def parser() -> argparse.ArgumentParser:
     telegram_confirm.add_argument("--grant-lifetime", type=float, default=30 * 86400.0)
     telegram.add_parser("inspect")
     telegram.add_parser("assumptions")
+    inbound = notify.add_parser("inbound").add_subparsers(dest="target", required=True)
+    poll = inbound.add_parser("poll")
+    poll.add_argument("--credential-file", type=Path, required=True)
+    poll.add_argument("--timeout", type=int, default=25)
+    process = inbound.add_parser("process")
+    process.add_argument("--once", action="store_true", required=True)
+    inbound.add_parser("journal")
     briefing = commands.add_parser("brief", help="read-only briefing from verified records")
     briefing.add_argument("--since", help="UTC epoch seconds or ISO-8601 instant")
     briefing.add_argument("--format", dest="form", choices=("json", "markdown", "plain"),

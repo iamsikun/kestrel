@@ -346,3 +346,36 @@ remain unauthorized and undone.
   rather than an ambiguous outcome, because nothing was transmitted and a retry
   could not help. A failure known to precede transmission retries; anything that
   may have been transmitted stays uncertain.
+
+## 2026-09-07 — Telegram messaging T5 (inbound polling and typed replies)
+
+- An update is durably journaled, as a normalized record or as a rejection
+  tombstone, before the polling offset advances, because advancing the offset is
+  what confirms receipt upstream. A full journal deliberately holds the offset
+  and raises a gap instead of acknowledging bytes that were not accounted for.
+- A numeric gap in update identifiers never implies a lost message: filtering
+  and Telegram's documented idle reset both produce gaps. After the documented
+  idle interval, or on a change of bot identity or enrollment epoch, the poller
+  enters an explicit rebase mode, polls without the old high offset, treats
+  already-journaled identifiers as duplicates, and persists a new cursor.
+  Negative offsets and destructive queue dropping are never used.
+- Being offline longer than the documented 24-hour retention window opens a
+  `possible_inbound_loss` gap. The assistant reports that replies may have been
+  lost rather than assuming the operator did not answer.
+- Every accepted command is bound to both the registered user ID and the
+  registered private chat ID, only ordinary message updates are accepted, and
+  attention mutations additionally require a 15-minute freshness window. A read
+  request may still be answered, because a fresh status request should retrieve
+  current state.
+- A command's effect, its reply intent and its processed request identity commit
+  in one assistant transaction, keyed by bot identity, epoch and update id. A
+  restart between the journal, the commit and delivery neither loses a committed
+  command nor applies it twice. Whether the answer reached the operator remains
+  uncertain.
+- An item reference binds both the stable item and its exact revision. A stale
+  or malformed reference is refused with a request to refresh the inbox; it can
+  never acknowledge newly worsened evidence. Unsupported prose receives one
+  bounded help response inside the reply budget.
+- The command table contains no approve, run, cancel, budget or policy verb.
+  Replies are rendered from typed fields through fixed templates; inbound text
+  is never echoed back as structure.

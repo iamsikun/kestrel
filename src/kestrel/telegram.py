@@ -28,7 +28,7 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from kestrel.contracts import parse_json
+from kestrel.contracts import canonical, parse_json
 from kestrel.notifications import Channel, Destination, Grant, TransportResult
 
 API_SCHEME = "https"
@@ -717,3 +717,185 @@ def rotate_credential(assistant: Any, client: TelegramClient, *,
     return {"same_bot": True, "bot_id": identity.id, "checked_at": now,
             "limitation": "Rotation cannot resolve an already uncertain send, and a copied "
                           "token on another host remains a residual risk."}
+
+
+# --------------------------------------------------------------------------
+# Inbound polling
+# --------------------------------------------------------------------------
+
+#: Telegram documents that update identifiers may be chosen randomly after a
+#: week without updates, so a numeric gap alone never implies a lost message.
+IDLE_RESET_SECONDS = 7 * 86_400.0
+#: Undelivered updates are documented as retained for at most 24 hours.
+RETENTION_SECONDS = 24 * 3_600.0
+MAX_JOURNAL_ROWS = 20_000
+MAX_INBOUND_TEXT = 4096
+
+ACCEPTED_UPDATE_KINDS = ("message",)
+
+
+def normalize_update(raw: Any, *, chat_id: int, user_id: int) -> tuple[dict | None, str]:
+    """Validate one raw update against the registered private chat.
+
+    Returns a bounded normalized record or a rejection reason. Every rejection
+    is still journaled as a tombstone so an offset advance never acknowledges
+    bytes that were not accounted for.
+    """
+    if type(raw) is not dict or type(raw.get("update_id")) is not int:
+        return None, "not_an_update"
+    kinds = sorted(set(raw) - {"update_id"})
+    if kinds != list(ACCEPTED_UPDATE_KINDS):
+        return None, f"unsupported_update_kind:{','.join(kinds) or 'empty'}"
+    try:
+        message = wire(MessageRef, raw["message"])
+    except TelegramError:
+        return None, "unparseable_message"
+    if message.chat.type != "private":
+        return None, "not_a_private_chat"
+    if message.chat.id != chat_id:
+        return None, "foreign_chat"
+    if message.sender is None or message.sender.is_bot:
+        return None, "bot_or_absent_sender"
+    if message.sender.id != user_id:
+        return None, "foreign_sender"
+    text = (message.text or "").strip()
+    if not text:
+        return None, "empty_text"
+    if len(text) > MAX_INBOUND_TEXT:
+        return None, "oversized_text"
+    return {"update_id": raw["update_id"], "message_id": message.message_id,
+            "date": message.date, "chat_id": message.chat.id,
+            "user_id": message.sender.id, "text": text}, ""
+
+
+class InboundPoller:
+    """One long poller writing an untrusted journal in the gateway database.
+
+    An update is durably journaled before the offset advances, because advancing
+    the offset is what confirms receipt upstream.
+    """
+
+    def __init__(self, gateway: Any, client: TelegramClient, *, bot_identity: str,
+                 epoch: int, chat_id: int, user_id: int) -> None:
+        self.gateway = gateway
+        self.client = client
+        self.bot_identity = str(bot_identity)
+        self.epoch = int(epoch)
+        self.chat_id = int(chat_id)
+        self.user_id = int(user_id)
+
+    # -- cursor ---------------------------------------------------------
+
+    def cursor(self) -> dict[str, Any] | None:
+        row = self.gateway._db.execute("SELECT * FROM poll_cursor WHERE id=1").fetchone()
+        return dict(row) if row else None
+
+    def _write_cursor(self, *, offset: int, mode: str, now: float,
+                      last_update_at: float | None = None,
+                      success: bool = True) -> None:
+        existing = self.cursor()
+        self.gateway._db.execute(
+            "INSERT INTO poll_cursor VALUES (1,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+            "bot_identity=excluded.bot_identity, epoch=excluded.epoch, "
+            "offset=excluded.offset, mode=excluded.mode, "
+            "last_success=excluded.last_success, last_update_at=excluded.last_update_at, "
+            "updated_at=excluded.updated_at",
+            (self.bot_identity, self.epoch, offset, mode,
+             now if success else (existing or {}).get("last_success"),
+             last_update_at if last_update_at is not None
+             else (existing or {}).get("last_update_at"), now))
+
+    def journal_size(self) -> int:
+        return self.gateway._db.execute("SELECT COUNT(*) FROM inbound_updates").fetchone()[0]
+
+    def pending(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        rows = self.gateway._db.execute(
+            "SELECT * FROM inbound_updates WHERE accepted=1 AND processed_at IS NULL "
+            "AND bot_identity=? AND epoch=? ORDER BY update_id LIMIT ?",
+            (self.bot_identity, self.epoch, limit)).fetchall()
+        return [{**dict(row), "record": parse_json(row["record"], max_bytes=32 * 1024)}
+                for row in rows]
+
+    def mark_processed(self, update_id: int, *, now: float) -> None:
+        with self.gateway._transaction():
+            self.gateway._db.execute(
+                "UPDATE inbound_updates SET processed_at=? WHERE bot_identity=? AND epoch=? "
+                "AND update_id=?", (now, self.bot_identity, self.epoch, update_id))
+
+    # -- polling --------------------------------------------------------
+
+    def poll_once(self, *, now: float, updates: list[dict] | None = None,
+                  timeout: int = POLL_TIMEOUT) -> dict[str, Any]:
+        cursor = self.cursor()
+        if cursor and (cursor["bot_identity"] != self.bot_identity
+                       or cursor["epoch"] != self.epoch):
+            # Re-enrollment starts a new epoch; the old cursor is not reused.
+            self.gateway._gap("inbound_epoch_change",
+                              {"recorded": cursor["bot_identity"], "epoch": cursor["epoch"]},
+                              now=now)
+            with self.gateway._transaction():
+                self._write_cursor(offset=0, mode="rebase", now=now, success=False)
+            cursor = self.cursor()
+        mode = cursor["mode"] if cursor else "rebase"
+        last_update_at = cursor["last_update_at"] if cursor else None
+        last_success = cursor["last_success"] if cursor else None
+        if last_update_at is not None and now - last_update_at > IDLE_RESET_SECONDS:
+            # Documented idle reset: identifiers may restart, so rebase rather
+            # than trusting the retained high offset.
+            mode = "rebase"
+        if last_success is not None and now - last_success > RETENTION_SECONDS:
+            self.gateway._gap(
+                "possible_inbound_loss",
+                {"offline_seconds": now - last_success,
+                 "note": "Longer than Telegram's documented 24 hour retention; replies may "
+                         "have been lost. Never assume the operator did not answer."},
+                now=now)
+        if self.journal_size() >= MAX_JOURNAL_ROWS:
+            self.gateway._gap("inbound_journal_full", {"rows": self.journal_size()}, now=now)
+            return {"polled": 0, "accepted": 0, "rejected": 0, "mode": mode,
+                    "offset_advanced": False,
+                    "reason": "inbound journal is full; the offset is deliberately held"}
+        offset = None if mode == "rebase" else (cursor["offset"] if cursor else None)
+        batch = (self.client.get_updates(offset=offset, timeout=timeout)
+                 if updates is None else list(updates))
+        accepted, rejected, duplicates = [], [], []
+        highest = offset - 1 if offset else None
+        for raw in batch:
+            update_id = raw.get("update_id") if type(raw) is dict else None
+            record, reason = normalize_update(raw, chat_id=self.chat_id, user_id=self.user_id)
+            if type(update_id) is int:
+                highest = update_id if highest is None else max(highest, update_id)
+            try:
+                with self.gateway._transaction():
+                    self.gateway._db.execute(
+                        "INSERT INTO inbound_updates(update_id,bot_identity,epoch,accepted,"
+                        "record,received_at) VALUES (?,?,?,?,?,?)",
+                        (update_id if type(update_id) is int else -1, self.bot_identity,
+                         self.epoch, 1 if record else 0,
+                         canonical(record or {"rejected": reason,
+                                              "update_id": update_id}).decode(), now))
+            except Exception:  # noqa: BLE001 - unique violation means a replay
+                duplicates.append(update_id)
+                continue
+            (accepted if record else rejected).append(update_id)
+        advanced = False
+        if highest is not None:
+            with self.gateway._transaction():
+                # The offset is advanced only after every update in the batch is
+                # durably journaled, because advancing it confirms receipt.
+                self._write_cursor(offset=highest + 1, mode="normal", now=now,
+                                   last_update_at=now if batch else last_update_at)
+            advanced = True
+        elif mode == "rebase":
+            with self.gateway._transaction():
+                self._write_cursor(offset=cursor["offset"] if cursor else 0, mode="normal",
+                                   now=now)
+        return {"polled": len(batch), "accepted": len(accepted), "rejected": len(rejected),
+                "duplicates": duplicates, "mode": mode, "offset_advanced": advanced,
+                "offset": (self.cursor() or {}).get("offset")}
+
+    def rejections(self) -> list[dict[str, Any]]:
+        return [{**dict(row), "record": parse_json(row["record"], max_bytes=32 * 1024)}
+                for row in self.gateway._db.execute(
+                    "SELECT * FROM inbound_updates WHERE accepted=0 ORDER BY received_at,"
+                    "update_id")]

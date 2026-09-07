@@ -16,7 +16,13 @@ import pytest
 from kestrel.application import Lab, framework_root
 from kestrel.contracts import canonical
 from kestrel.fixtures import generate
-from kestrel.messaging import Assistant, init_messaging
+from kestrel.messaging import (
+    COMMANDS,
+    Assistant,
+    CommandProcessor,
+    init_messaging,
+    parse_command,
+)
 from kestrel.notifications import Channel, Destination, Exporter, Gateway, Grant
 from kestrel.telegram import (
     ACTIVATION_ENV,
@@ -27,6 +33,7 @@ from kestrel.telegram import (
     MAX_TEXT_CHARACTERS,
     FakeHttpTransport,
     HttpResponse,
+    InboundPoller,
     Pairing,
     TelegramClient,
     TelegramError,
@@ -563,3 +570,296 @@ def test_routine_telegram_tests_open_no_socket():
     assert os.environ.get(ACTIVATION_ENV) in (None, "", "0")
     with pytest.raises(SocketBlockedError):
         socket.socket().connect((API_HOST, 443))
+
+
+# --------------------------------------------------------------------------
+# Inbound polling and typed commands
+# --------------------------------------------------------------------------
+
+def wire_inbound(tmp_path, *, run=True):
+    """A paired lab with a confirmed chat, a gateway and a poller."""
+    manifests = generate(tmp_path / "projects", framework_root())
+    with Lab.initialize(tmp_path / "lab") as lab:
+        record = lab.register(manifests[0], snapshot_dirty=True)
+        campaign = lab.propose(record["project_id"], "Inbound fixture.")
+        if run:
+            approval = lab.approve(campaign, lab.controller.campaign(campaign)["digest"],
+                                   (lab.root / "operator.token").read_text())
+            lab.run(campaign, approval)
+        lab_root = lab.root
+    root = tmp_path / "messaging"
+    init_messaging(root, lab_root)
+    token = (root / "assistant-private" / "operator.token").read_text()
+    helper = Assistant(root)
+    helper.reconcile(now=NOW)
+    pairing = Pairing(helper, client([ok(BOT), ok(NO_WEBHOOK)]))
+    nonce = pairing.begin(now=NOW)["start_link"].split("start=")[1]
+    pairing.poll(now=NOW + 1, updates=[message(f"/start {nonce}")])
+    pairing.confirm(operator_token=token, now=NOW + 2)
+    gateway = Gateway(root, owner="poller")
+    poller = InboundPoller(gateway, client([]), bot_identity=str(BOT["id"]), epoch=1,
+                           chat_id=CHAT, user_id=USER)
+    return helper, gateway, poller, root, campaign
+
+
+def command(text, *, update_id=100, date=None, chat_id=CHAT, sender=DEFAULT_SENDER,
+            key="message", chat_type="private"):
+    return message(text, update_id=update_id, chat_id=chat_id, sender=sender, key=key,
+                   chat_type=chat_type) | (
+        {} if date is None else {"message": {**message(text, update_id=update_id,
+                                                       chat_id=chat_id, sender=sender,
+                                                       chat_type=chat_type)["message"],
+                                             "date": date}})
+
+
+@pytest.mark.messaging("N-A07")
+def test_updates_are_journaled_before_the_offset_advances(tmp_path):
+    helper, gateway, poller, _, _ = wire_inbound(tmp_path)
+    assert poller.cursor() is None
+    result = poller.poll_once(now=NOW + 10, updates=[command("/help", update_id=100)])
+    assert result["accepted"] == 1 and result["offset_advanced"] is True
+    assert poller.cursor()["offset"] == 101
+    journaled = poller.pending()
+    assert [row["record"]["text"] for row in journaled] == ["/help"]
+    assert journaled[0]["processed_at"] is None
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A07")
+def test_a_full_journal_holds_the_offset_instead_of_acknowledging_bytes(tmp_path,
+                                                                       monkeypatch):
+    helper, gateway, poller, _, _ = wire_inbound(tmp_path)
+    monkeypatch.setattr("kestrel.telegram.MAX_JOURNAL_ROWS", 0)
+    result = poller.poll_once(now=NOW + 10, updates=[command("/help")])
+    assert result["offset_advanced"] is False
+    assert "deliberately held" in result["reason"]
+    assert gateway.gaps()[0]["kind"] == "inbound_journal_full"
+    assert poller.pending() == []
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A07")
+@pytest.mark.parametrize("update,reason", [
+    (command("/help", chat_id=999), "foreign_chat"),
+    (command("/help", sender={"id": 1, "is_bot": False}), "foreign_sender"),
+    (command("/help", sender={"id": USER, "is_bot": True}), "bot_or_absent_sender"),
+    (command("/help", sender=None), "bot_or_absent_sender"),
+    (command("/help", chat_type="supergroup"), "not_a_private_chat"),
+    (command("/help", key="edited_message"), "unsupported_update_kind:edited_message"),
+    (command("/help", key="channel_post"), "unsupported_update_kind:channel_post"),
+    (command("x" * 5000), "oversized_text"),
+    (command("   "), "empty_text"),
+    ({"update_id": 7}, "unsupported_update_kind:empty"),
+])
+def test_foreign_spoofed_and_unsupported_input_is_rejected_with_a_tombstone(
+        tmp_path, update, reason):
+    helper, gateway, poller, _, _ = wire_inbound(tmp_path)
+    result = poller.poll_once(now=NOW + 10, updates=[update])
+    assert result["accepted"] == 0 and result["rejected"] == 1
+    assert poller.pending() == []
+    assert reason in {row["record"].get("rejected") for row in poller.rejections()}
+    # The offset still advances: the bytes were durably accounted for.
+    assert result["offset_advanced"] is True
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A07")
+def test_a_replayed_update_is_applied_once(tmp_path):
+    helper, gateway, poller, _, _ = wire_inbound(tmp_path)
+    poller.poll_once(now=NOW + 10, updates=[command("/stop", update_id=100)])
+    processor = CommandProcessor(helper, poller)
+    first = processor.process_pending(now=NOW + 11)
+    assert [row["command"] for row in first["applied"]] == ["/stop"]
+    assert helper.paused() is True
+    # Telegram re-sends the same update after a restart before the offset moved.
+    again = poller.poll_once(now=NOW + 12, updates=[command("/stop", update_id=100)])
+    assert again["duplicates"] == [100]
+    assert processor.process_pending(now=NOW + 13)["applied"] == []
+    replies = [row for row in helper.intents() if row["purpose"].startswith("reply:")]
+    assert len(replies) == 1
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A07")
+def test_a_crash_between_processing_and_reply_delivery_does_not_reapply(tmp_path):
+    helper, gateway, poller, root, _ = wire_inbound(tmp_path)
+    poller.poll_once(now=NOW + 10, updates=[command("/stop", update_id=100)])
+    processor = CommandProcessor(helper, poller)
+    processor.process_pending(now=NOW + 11)
+    # Simulate a restart that lost the gateway's processed marker.
+    gateway._db.execute("UPDATE inbound_updates SET processed_at=NULL")
+    replayed = processor.process_pending(now=NOW + 12)
+    assert replayed["replayed"] and replayed["applied"] == []
+    assert len([row for row in helper.intents()
+                if row["purpose"].startswith("reply:")]) == 1
+    assert helper.processed(f"{BOT['id']}:1:100")["kind"] == "stop"
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A07")
+def test_a_stale_command_cannot_change_current_attention(tmp_path):
+    helper, gateway, poller, _, _ = wire_inbound(tmp_path)
+    reference = helper.inbox()[0]["reference"]
+    stale = command(f"/ack {reference}", update_id=100, date=int(NOW))
+    poller.poll_once(now=NOW + 5000, updates=[stale])
+    outcome = CommandProcessor(helper, poller).process_pending(now=NOW + 5000)
+    assert outcome["refused"][0]["reason"] == "stale_command"
+    assert helper.item(reference)["attention"] == "OPEN"
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A07")
+def test_a_stale_reference_is_refused_and_asks_for_a_refresh(tmp_path):
+    helper, gateway, poller, _, _ = wire_inbound(tmp_path)
+    reference = helper.inbox()[0]["reference"]
+    item_id = reference.split("-")[0]
+    poller.poll_once(now=NOW + 10,
+                     updates=[command(f"/ack {item_id}-r9", update_id=100,
+                                      date=int(NOW + 10))])
+    outcome = CommandProcessor(helper, poller).process_pending(now=NOW + 11)
+    assert outcome["refused"][0]["reason"] == "stale_reference"
+    assert helper.item(reference)["attention"] == "OPEN"
+    reply = next(row for row in helper.intents() if row["purpose"] == "reply:refused")
+    assert reply["payload"]["detail"]["reason"] == "stale_reference"
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A07")
+def test_the_authorized_commands_apply_only_attention_and_read_effects(tmp_path):
+    helper, gateway, poller, _, campaign = wire_inbound(tmp_path)
+    reference = helper.inbox()[0]["reference"]
+    updates = [command("/help", update_id=1, date=int(NOW + 10)),
+               command(f"/status {campaign}", update_id=2, date=int(NOW + 10)),
+               command("/brief", update_id=3, date=int(NOW + 10)),
+               command("/inbox", update_id=4, date=int(NOW + 10)),
+               command(f"/snooze {reference} 1h", update_id=5, date=int(NOW + 10)),
+               command("/stop", update_id=6, date=int(NOW + 10)),
+               command("/resume", update_id=7, date=int(NOW + 10))]
+    poller.poll_once(now=NOW + 10, updates=updates)
+    outcome = CommandProcessor(helper, poller).process_pending(now=NOW + 11)
+    assert [row["command"] for row in outcome["applied"]] == [
+        "/help", "/status", "/brief", "/inbox", "/snooze", "/stop", "/resume"]
+    assert helper.item(reference)["attention"] == "SNOOZED"
+    assert helper.paused() is False
+    purposes = {row["purpose"] for row in helper.intents()}
+    assert {"reply:help", "reply:status", "reply:brief", "reply:inbox", "reply:snooze",
+            "reply:stop", "reply:resume"} <= purposes
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A07")
+def test_no_execution_or_policy_command_exists(tmp_path):
+    helper, gateway, poller, _, campaign = wire_inbound(tmp_path)
+    forbidden = [f"/approve {campaign}", f"/run {campaign}", f"/cancel {campaign}",
+                 "/budget 1000", "/policy allow_all", "/execute rm -rf /",
+                 "/grant network", "; DROP TABLE items"]
+    poller.poll_once(now=NOW + 10,
+                     updates=[command(text, update_id=200 + index, date=int(NOW + 10))
+                              for index, text in enumerate(forbidden)])
+    outcome = CommandProcessor(helper, poller).process_pending(now=NOW + 11)
+    assert all(row["reason"] == "unsupported_request" for row in outcome["refused"])
+    assert all(purpose == "reply:help" for purpose in
+               [row["purpose"] for row in helper.intents()
+                if row["purpose"].startswith("reply:")])
+    for name in ("approve", "run", "cancel", "budget", "policy", "execute", "grant"):
+        assert f"/{name}" not in COMMANDS
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A07")
+def test_status_for_an_unknown_identifier_discloses_nothing(tmp_path):
+    helper, gateway, poller, _, _ = wire_inbound(tmp_path)
+    poller.poll_once(now=NOW + 10,
+                     updates=[command("/status not-a-campaign", update_id=1,
+                                      date=int(NOW + 10))])
+    CommandProcessor(helper, poller).process_pending(now=NOW + 11)
+    reply = next(row for row in helper.intents()
+                 if row["purpose"].startswith("reply:status"))
+    assert reply["purpose"] == "reply:status_unknown"
+    assert reply["payload"]["detail"] == {}
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A18")
+def test_an_idle_reset_rebases_the_cursor_instead_of_trusting_a_gap(tmp_path):
+    helper, gateway, poller, _, _ = wire_inbound(tmp_path)
+    poller.poll_once(now=NOW + 10, updates=[command("/help", update_id=900_000)])
+    assert poller.cursor()["offset"] == 900_001
+    # After the documented idle interval Telegram may restart identifiers.
+    later = NOW + 10 + 8 * 86_400
+    result = poller.poll_once(now=later, updates=[command("/help", update_id=5,
+                                                          date=int(later))])
+    assert result["mode"] == "rebase"
+    assert poller.cursor()["offset"] == 6
+    assert poller.cursor()["mode"] == "normal"
+    # A numeric gap on its own never opened a loss gap.
+    assert "missing_update" not in {gap["kind"] for gap in gateway.gaps(open_only=False)}
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A18")
+def test_a_gap_longer_than_the_retention_window_reports_possible_lost_replies(tmp_path):
+    helper, gateway, poller, _, _ = wire_inbound(tmp_path)
+    poller.poll_once(now=NOW + 10, updates=[command("/help", update_id=1)])
+    later = NOW + 10 + 30 * 3600
+    poller.poll_once(now=later, updates=[])
+    gap = next(row for row in gateway.gaps() if row["kind"] == "possible_inbound_loss")
+    assert gap["detail"]["offline_seconds"] > 24 * 3600
+    assert "Never assume the operator did not answer" in gap["detail"]["note"]
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A18")
+def test_re_enrollment_starts_a_new_epoch_rather_than_reusing_a_cursor(tmp_path):
+    helper, gateway, poller, root, _ = wire_inbound(tmp_path)
+    poller.poll_once(now=NOW + 10, updates=[command("/help", update_id=500)])
+    successor = InboundPoller(gateway, client([]), bot_identity=str(BOT["id"]), epoch=2,
+                              chat_id=CHAT, user_id=USER)
+    result = successor.poll_once(now=NOW + 20, updates=[command("/help", update_id=3,
+                                                                date=int(NOW + 20))])
+    assert result["mode"] == "rebase"
+    assert successor.cursor()["epoch"] == 2
+    assert {gap["kind"] for gap in gateway.gaps()} >= {"inbound_epoch_change"}
+    # The earlier epoch's journal is retained and not reprocessed.
+    assert len(successor.pending()) == 1
+    gateway.close()
+    helper.close()
+
+
+@pytest.mark.messaging("N-A07")
+def test_negative_offsets_and_destructive_dropping_are_never_used(tmp_path):
+    helper, gateway, poller, _, _ = wire_inbound(tmp_path)
+    poller.poll_once(now=NOW + 10, updates=[command("/help", update_id=42)])
+    http = FakeHttpTransport(script=[ok([])])
+    poller.client = TelegramClient(TOKEN, http=http)
+    poller.poll_once(now=NOW + 11, timeout=0)
+    body = json.loads(http.calls[0]["body"])
+    assert body["offset"] == 43
+    assert body["offset"] > 0
+    assert "drop_pending_updates" not in body
+    assert "delete_webhook" not in body
+    gateway.close()
+    helper.close()
+
+
+def test_command_parsing_is_a_fixed_grammar():
+    assert parse_command("/ack M12-r1") == ("/ack", ["M12-r1"])
+    assert parse_command("/ACK@kestrel_bot M12-r1") == ("/ack", ["M12-r1"])
+    assert parse_command("/snooze M12-r1 tomorrow") == ("/snooze", ["M12-r1", "tomorrow"])
+    for rejected in ("", "hello", "/approve x", "/run", "/ack a b c",
+                     "/ack " + "x" * 100, "/ack has space; rm -rf /", "/ack $(whoami)",
+                     "/ack M12-r1' OR 1=1", "ack M12-r1"):
+        assert parse_command(rejected) is None
+    assert parse_command("/ack") == ("/ack", [])

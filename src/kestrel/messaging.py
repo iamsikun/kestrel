@@ -1013,17 +1013,21 @@ class Assistant:
 
     def _create_intent(self, *, purpose: str, route: str, payload: dict, now: float,
                        result: dict, item_id: str | None = None, revision: int | None = None,
-                       occurrence_id: str | None = None) -> str | None:
+                       occurrence_id: str | None = None,
+                       respect_quiet_hours: bool = True) -> str | None:
         dedupe = digest({"purpose": purpose, "route": route, "item": item_id,
                          "revision": revision, "occurrence": occurrence_id,
                          "payload": payload})
         if self._db.execute("SELECT 1 FROM intents WHERE dedupe=?", (dedupe,)).fetchone():
             return None
-        expiry = self.config.intent_expiry_seconds.get(
-            purpose, DEFAULT_EXPIRY.get(purpose, DEFAULT_EXPIRY.get(route, 21_600.0)))
+        default = (DEFAULT_EXPIRY["reply"] if purpose.startswith("reply:")
+                   else DEFAULT_EXPIRY.get(purpose, DEFAULT_EXPIRY.get(route, 21_600.0)))
+        expiry = self.config.intent_expiry_seconds.get(purpose, default)
         not_before = now
         condition = payload.get("condition")
-        if route != "critical" or condition not in self.config.quiet_hour_exceptions:
+        if respect_quiet_hours and (route != "critical"
+                                    or condition not in self.config.quiet_hour_exceptions):
+            # A requested reply is not deferred: the operator just asked.
             not_before = next_waking_instant(now, self.config)
         identity = f"intent-{uuid.uuid4().hex}"
         self._db.execute(
@@ -1163,7 +1167,8 @@ class Assistant:
                 "history": history}
 
     def _mutate_attention(self, reference: str, *, action: str, actor: str, now: float,
-                          request_id: str | None, until: float | None = None) -> dict:
+                          request_id: str | None, until: float | None = None,
+                          reply: dict | None = None) -> dict:
         item_id, revision = self.parse_reference(reference)
         with self._transaction():
             if request_id and self._db.execute(
@@ -1194,23 +1199,60 @@ class Assistant:
                       "resolved": False,
                       "note": "Attention state only. This does not resolve the condition, "
                               "approve work, or certify evidence."}
+            if reply is not None:
+                self._create_intent(purpose=reply["purpose"], route="timely",
+                                    payload=reply["payload"], now=now,
+                                    result={"intents": []}, item_id=item_id,
+                                    revision=revision, respect_quiet_hours=False)
             if request_id:
                 self._db.execute("INSERT INTO processed_requests VALUES (?,?,?,?)",
                                  (request_id, action, canonical(result).decode(), now))
         return result
 
     def acknowledge(self, reference: str, *, actor: str = "operator",
-                    now: float | None = None, request_id: str | None = None) -> dict:
+                    now: float | None = None, request_id: str | None = None,
+                    reply: dict | None = None) -> dict:
         return self._mutate_attention(reference, action="acknowledge", actor=actor,
                                       now=time.time() if now is None else now,
-                                      request_id=request_id)
+                                      request_id=request_id, reply=reply)
 
     def snooze(self, reference: str, duration: str, *, actor: str = "operator",
-               now: float | None = None, request_id: str | None = None) -> dict:
+               now: float | None = None, request_id: str | None = None,
+               reply: dict | None = None) -> dict:
         now = time.time() if now is None else now
         return self._mutate_attention(reference, action="snooze", actor=actor, now=now,
-                                      request_id=request_id,
+                                      request_id=request_id, reply=reply,
                                       until=self.resolve_deferral(duration, now=now))
+
+    def record_request(self, request_id: str, kind: str, result: dict, *, now: float,
+                       reply: dict | None = None,
+                       mutation: tuple[str, bool] | None = None) -> dict:
+        """Commit one command's effect, its reply intent and its request id together.
+
+        A restart between the inbound journal, this commit, and delivery of the
+        answer can never lose a committed command or apply it twice. Whether the
+        answer actually reached the operator remains uncertain.
+        """
+        with self._transaction():
+            existing = self._db.execute("SELECT result FROM processed_requests WHERE id=?",
+                                        (request_id,)).fetchone()
+            if existing:
+                return parse_json(existing[0])
+            if mutation is not None:
+                self._set_meta("paused", "1" if mutation[1] else "0")
+                self._set_meta("paused_at", str(now))
+            if reply is not None:
+                self._create_intent(purpose=reply["purpose"], route="timely",
+                                    payload=reply["payload"], now=now,
+                                    result={"intents": []}, respect_quiet_hours=False)
+            self._db.execute("INSERT INTO processed_requests VALUES (?,?,?,?)",
+                             (request_id, kind, canonical(result).decode(), now))
+        return result
+
+    def processed(self, request_id: str) -> dict | None:
+        row = self._db.execute("SELECT * FROM processed_requests WHERE id=?",
+                               (request_id,)).fetchone()
+        return {**dict(row), "result": parse_json(row["result"])} if row else None
 
     def resolve_deferral(self, duration: str, *, now: float) -> float:
         """`1h`, `30m`, `2d`, or `tomorrow` meaning the next configured brief time."""
@@ -1314,3 +1356,194 @@ def json_default(value: Any) -> Any:
 
 def dumps(value: Any) -> str:
     return json.dumps(value, indent=2, sort_keys=True, allow_nan=False, default=json_default)
+
+
+# --------------------------------------------------------------------------
+# Inbound commands
+# --------------------------------------------------------------------------
+
+#: The complete authorized vocabulary. There is deliberately no approve, run,
+#: cancel, budget or policy command anywhere in this table.
+COMMANDS = ("/help", "/status", "/brief", "/inbox", "/ack", "/snooze", "/stop", "/resume")
+ATTENTION_COMMANDS = frozenset({"/ack", "/snooze", "/stop", "/resume"})
+#: A stale command must not silently change current preferences.
+COMMAND_FRESHNESS_SECONDS = 900.0
+MAX_COMMAND_ARGUMENTS = 2
+_ARGUMENT = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
+
+
+def parse_command(text: str) -> tuple[str, list[str]] | None:
+    """Parse the fixed grammar. Inbound text is data, never an instruction."""
+    parts = str(text).strip().split()
+    if not parts:
+        return None
+    head = parts[0].split("@", 1)[0].lower()
+    if head not in COMMANDS:
+        return None
+    arguments = parts[1:]
+    if len(arguments) > MAX_COMMAND_ARGUMENTS:
+        return None
+    if any(not _ARGUMENT.match(argument) for argument in arguments):
+        return None
+    return head, arguments
+
+
+class CommandProcessor:
+    """Validates journaled inbound updates and applies bounded effects.
+
+    The gateway's journal is untrusted. Its compromise can affect attention and
+    forge transport-level acknowledgement within these limits; it cannot obtain
+    scientific review status or any research execution authority.
+    """
+
+    def __init__(self, assistant: Assistant, poller: Any) -> None:
+        self.assistant = assistant
+        self.poller = poller
+
+    def request_id(self, record: dict) -> str:
+        return f"{self.poller.bot_identity}:{self.poller.epoch}:{record['update_id']}"
+
+    def process_pending(self, *, now: float | None = None,
+                        limit: int = 50) -> dict[str, Any]:
+        now = time.time() if now is None else now
+        applied, refused, replayed = [], [], []
+        for entry in self.poller.pending(limit=limit):
+            record = entry["record"]
+            identity = self.request_id(record)
+            existing = self.assistant.processed(identity)
+            if existing is not None:
+                replayed.append(identity)
+                self.poller.mark_processed(record["update_id"], now=now)
+                continue
+            outcome = self._handle(record, identity=identity, now=now)
+            self.poller.mark_processed(record["update_id"], now=now)
+            (applied if outcome.get("applied") else refused).append(
+                {"request": identity, **outcome})
+        return {"applied": applied, "refused": refused, "replayed": replayed,
+                "observed_at": now}
+
+    def _refuse(self, record: dict, identity: str, reason: str, *, now: float) -> dict:
+        result = {"applied": False, "reason": reason, "command": record.get("command")}
+        self.assistant.record_request(
+            identity, "refused", result, now=now,
+            reply={"purpose": "reply:refused",
+                   "payload": {"request": identity, "detail": {"reason": reason}}})
+        return result
+
+    def _handle(self, record: dict, *, identity: str, now: float) -> dict[str, Any]:
+        parsed = parse_command(record["text"])
+        if parsed is None:
+            # Unsupported prose gets a bounded help response, nothing more.
+            result = {"applied": False, "reason": "unsupported_request"}
+            self.assistant.record_request(
+                identity, "help", result, now=now,
+                reply={"purpose": "reply:help",
+                       "payload": {"request": identity,
+                                   "detail": {"commands": ", ".join(COMMANDS)}}})
+            return result
+        command, arguments = parsed
+        record = {**record, "command": command}
+        age = now - float(record.get("date", now))
+        if command in ATTENTION_COMMANDS and age > COMMAND_FRESHNESS_SECONDS:
+            return self._refuse(record, identity, "stale_command", now=now)
+        if command == "/help":
+            result = {"applied": True, "command": command}
+            self.assistant.record_request(
+                identity, "help", result, now=now,
+                reply={"purpose": "reply:help",
+                       "payload": {"request": identity,
+                                   "detail": {"commands": ", ".join(COMMANDS)}}})
+            return result
+        if command == "/status":
+            return self._status(record, identity, arguments, now=now)
+        if command == "/brief":
+            return self._brief(record, identity, now=now)
+        if command == "/inbox":
+            return self._inbox(record, identity, now=now)
+        if command in ("/stop", "/resume"):
+            paused = command == "/stop"
+            result = {"applied": True, "command": command, "paused": paused}
+            self.assistant.record_request(
+                identity, command.strip("/"), result, now=now,
+                mutation=("paused", paused),
+                reply={"purpose": f"reply:{command.strip('/')}",
+                       "payload": {"request": identity, "detail": {"paused": paused}}})
+            return result
+        if not arguments:
+            return self._refuse(record, identity, "missing_item_reference", now=now)
+        reference = arguments[0]
+        try:
+            self.assistant.parse_reference(reference)
+        except MessagingError:
+            return self._refuse(record, identity, "malformed_item_reference", now=now)
+        try:
+            if command == "/ack":
+                applied = self.assistant.acknowledge(
+                    reference, actor="telegram", now=now, request_id=identity,
+                    reply={"purpose": "reply:ack",
+                           "payload": {"request": identity,
+                                       "detail": {"reference": reference}}})
+            else:
+                if len(arguments) < 2:
+                    return self._refuse(record, identity, "missing_deferral", now=now)
+                applied = self.assistant.snooze(
+                    reference, arguments[1], actor="telegram", now=now,
+                    request_id=identity,
+                    reply={"purpose": "reply:snooze",
+                           "payload": {"request": identity,
+                                       "detail": {"reference": reference}}})
+        except MessagingError as exc:
+            reason = ("stale_reference" if "stale" in str(exc)
+                      else "already_resolved" if "resolved" in str(exc)
+                      else "rejected")
+            return self._refuse(record, identity, reason, now=now)
+        return {"applied": True, "command": command, "reference": reference,
+                "attention": applied["attention"]}
+
+    def _status(self, record: dict, identity: str, arguments: list[str], *,
+                now: float) -> dict[str, Any]:
+        detail: dict[str, Any] = {}
+        purpose = "reply:status_unknown"
+        if arguments:
+            try:
+                with self.assistant.sources() as src:
+                    campaign = src.controller.campaign(arguments[0])
+                    report = Assistant._safe_report(
+                        src, arguments[0], campaign,
+                        src.controller.attempts(arguments[0]),
+                        src.controller.budget_used(arguments[0]))
+                detail = {"campaign_id": arguments[0], "state": campaign["state"],
+                          **report["outcome"]}
+                purpose = "reply:status"
+            except (SourceUnavailable, ValueError):
+                # An unknown identifier reveals nothing about other projects.
+                detail = {}
+        result = {"applied": True, "command": "/status", "known": purpose == "reply:status"}
+        self.assistant.record_request(
+            identity, "status", result, now=now,
+            reply={"purpose": purpose, "payload": {"request": identity, "detail": detail}})
+        return result
+
+    def _brief(self, record: dict, identity: str, *, now: float) -> dict[str, Any]:
+        with self.assistant.sources() as src:
+            briefing = build_briefing(src, now=now, label=str(self.assistant.config.lab))
+        result = {"applied": True, "command": "/brief",
+                  "content_digest": briefing["content_digest"]}
+        self.assistant.record_request(
+            identity, "brief", result, now=now,
+            reply={"purpose": "reply:brief",
+                   "payload": {"request": identity,
+                               "detail": {"summary": render_plain(briefing)}}})
+        return result
+
+    def _inbox(self, record: dict, identity: str, *, now: float) -> dict[str, Any]:
+        items = self.assistant.inbox(limit=5)
+        detail = ({"count": len(items),
+                   "items": [f"{row['reference']} {row['condition']}" for row in items]}
+                  if items else {})
+        purpose = "reply:inbox" if items else "reply:inbox_empty"
+        result = {"applied": True, "command": "/inbox", "count": len(items)}
+        self.assistant.record_request(
+            identity, "inbox", result, now=now,
+            reply={"purpose": purpose, "payload": {"request": identity, "detail": detail}})
+        return result

@@ -246,6 +246,31 @@ CONDITION_TEMPLATES = {
 }
 
 
+#: Fixed reply templates. Command answers are rendered from typed fields on the
+#: authority side; no inbound text is ever echoed back as structure.
+REPLY_TEMPLATES = {
+    "help": "Enabled commands: {commands}. Scope: one paired private chat, this lab. "
+            "No command can approve work, change a budget, edit policy, cancel a "
+            "campaign, or rewrite a frozen assumption.",
+    "status": "Campaign {campaign_id} is {state}. Execution {execution}; protocol "
+              "{validity}; finding {finding}; evidence {assurance}.",
+    "status_unknown": "No campaign with that reference is available to this channel.",
+    "brief": "{summary}",
+    "inbox": "{count} unresolved item(s): {items}. Reply /ack or /snooze with an exact "
+             "reference such as M12-r1.",
+    "inbox_empty": "Nothing is unresolved in the recorded state.",
+    "ack": "{reference} acknowledged. Reminders stop for this revision. The underlying "
+           "condition is unchanged and no evidence is certified.",
+    "snooze": "{reference} deferred. The condition remains open and unresolved.",
+    "stop": "Automated delivery is paused. This is a local preference; it cannot revoke a "
+            "credential at the provider or recall an accepted message.",
+    "resume": "Automated delivery resumed within the existing grant. This restores no "
+              "revoked authority and broadens no scope.",
+    "refused": "That request was not applied: {reason}. Ask for /inbox to refresh "
+               "references, or /help for the enabled commands.",
+}
+
+
 def render_notification(intent: dict[str, Any], *, grant: Grant,
                         channel: Channel) -> dict[str, Any]:
     """Produce releasable bytes from allowlisted typed fields, or refuse.
@@ -274,6 +299,13 @@ def render_notification(intent: dict[str, Any], *, grant: Grant,
         body = (f"{payload.get('items', 0)} existing condition(s) are now in the local inbox. "
                 "Historical events are not replayed as messages.")
         reference = "Use the local inbox for detail."
+    elif purpose.startswith("reply:"):
+        kind = purpose.split(":", 1)[1]
+        if kind not in REPLY_TEMPLATES:
+            raise DisclosureRefused(f"No approved reply template for {kind!r}")
+        headline = "Kestrel"
+        body = _fill(REPLY_TEMPLATES[kind], payload.get("detail", {}))
+        reference = f"Answering {payload.get('request', 'a request')}."
     elif purpose.startswith("item:"):
         condition = str(payload.get("condition", ""))
         if condition not in CONDITION_TEMPLATES:

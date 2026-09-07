@@ -1,5 +1,25 @@
 # Build state
 
+Telegram messaging T5 (2026-09-07): durable inbound polling and typed replies on
+`build/telegram-messaging`, offline. `telegram.InboundPoller` journals every update
+or rejection tombstone before advancing the offset, enters an explicit rebase mode
+for the documented idle reset and epoch changes, holds the offset when its journal
+is full, and reports a possible-inbound-loss gap past the 24-hour retention window.
+`messaging.CommandProcessor` applies `/help`, `/status`, `/brief`, `/inbox`,
+`/ack`, `/snooze`, `/stop` and `/resume`, binding each to the registered user and
+private chat, enforcing a 15-minute freshness window on attention mutations, and
+committing effect, reply intent and processed request identity together. There is
+no approve, run, cancel, budget or policy command. `tests/test_telegram.py` now
+holds 71 cases. Commands and results:
+`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`
+exit 0; `python3 tools/validate_pack.py` exit 0; `git diff --check` exit 0;
+`KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q`
+— 433 passed, 1 skipped (A28), 12 deselected, exit 0. Evidence:
+`/private/tmp/kestrel-telegram-messaging/core-t5.xml`.
+Polling is exercised entirely through injected updates and scripted HTTP; no
+request reached api.telegram.org. Next action: T4's reviewable but inert
+deployment profile, operator runbook and separately invoked live test.
+
 Telegram messaging T3 (2026-09-07): typed Telegram adapter and pairing on
 `build/telegram-messaging`, exercised only through a scripted HTTP transport.
 New `src/kestrel/telegram.py`: four permitted methods, fixed HTTPS origin, no
