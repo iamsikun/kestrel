@@ -34,7 +34,8 @@ sys.meta_path.insert(0, DenyHeavyDependencies())
 modules = ['kestrel', 'kestrel.application', 'kestrel.controller', 'kestrel.contracts',
            'kestrel.projects', 'kestrel.artifacts', 'kestrel.runners',
            'kestrel.evaluation', 'kestrel.agents', 'kestrel.agent_execution',
-           'kestrel.provider_records', 'kestrel.conformance', 'kestrel.cli']
+           'kestrel.provider_records', 'kestrel.conformance', 'kestrel.cli',
+           'kestrel.client', 'kestrel.integration', 'kestrel.experiments']
 locations = {name: str(pathlib.Path(importlib.import_module(name).__file__).resolve())
              for name in modules}
 environment = pathlib.Path(sys.prefix).resolve()
@@ -260,5 +261,32 @@ def test_built_wheel_installs_cleanly_and_runs_actual_external_offline_demo(tmp_
     assert packet.is_file()
     evidence["demo_sha256"] = hashlib.sha256((demo_root / "demo.json").read_bytes()).hexdigest()
     evidence["evidence_packet_sha256"] = hashlib.sha256(packet.read_bytes()).hexdigest()
+    # Installed onboarding operates only on newly generated external synthetic data.
+    integration_sources = temporary / "integration-sources"
+    run_command([str(installed_python), "-I", "-m", "kestrel.integration_examples",
+                 str(integration_sources), "--image", "python@sha256:" + "1" * 64], "generate-integration")
+    integration_lab = temporary / "integration-lab"
+    def console(arguments, name):
+        return run_command([str(installed_python), "-I", str(launcher), str(installed_console),
+                            *arguments], name)
+    console(["lab", "init", str(integration_lab)], "integration-lab-init")
+    prefix = ["--lab", str(integration_lab)]
+    for project in ("arithmetic", "strings"):
+        console([*prefix, "project", "add", str(integration_sources / project), "--json"],
+                f"integration-add-{project}")
+        preview = json.loads(console([*prefix, "project", "snapshot", project, "--preview", "--json"],
+                                     f"integration-preview-{project}").stdout)
+        assert not preview["blockers"]
+        snapshot = json.loads(console([*prefix, "project", "snapshot", project, "--expect",
+                                       preview["selection_digest"], "--json"], f"integration-snapshot-{project}").stdout)
+        operation = "calculate" if project == "arithmetic" else "repeat"
+        proposal = json.loads(console([*prefix, "experiment", "propose", "--snapshot", snapshot["digest"],
+                                       "--operation", operation, "--parameters", '{"value":5}', "--json"],
+                                      f"integration-propose-{project}").stdout)
+        assert proposal["budget_charged"]["attempts"] == 0
+        console([*prefix, "experiment", "cancel", proposal["experiment_id"], "--json"],
+                f"integration-cancel-{project}")
+    listed = json.loads(console([*prefix, "project", "list", "--json"], "integration-list").stdout)
+    assert len(listed) == 2
     evidence["result"] = "passed"
     evidence_path.write_text(json.dumps(evidence, indent=2, sort_keys=True))

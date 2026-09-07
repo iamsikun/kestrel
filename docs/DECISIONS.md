@@ -236,3 +236,13 @@ remain unauthorized and undone.
   property. The pinned first-pilot inventory, its manifest and `validate_pack`
   are unchanged; an unknown ID under the pinned `acceptance` property would
   otherwise become a release-gate integrity diagnostic.
+
+## 2026-09-07 — existing-project integration
+
+- Add selected-source snapshots as specified in PROJECT_INTEGRATION.md before
+  implementation, preserving the complete-directory mode and pinned requirements.
+- Connections identify source locations; revisions identify canonical contracts;
+  snapshots bind revisions and selected bytes. No Git command or setup hook runs.
+- Execution-only experiments share the controller ledger and operator approvals.
+  They provide protocol-checked, self-reported project output, with no scientific
+  evaluation claim. No live provider, implicit image pull, host fallback or deploy.

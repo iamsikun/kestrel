@@ -575,7 +575,7 @@ class DockerDriver:
     """
 
     def __init__(self, image: str, workspace_root: Path, *, docker: str = "docker"):
-        if not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
+        if not re.fullmatch(r"(?:[^\s@]+@)?sha256:[0-9a-f]{64}", image):
             raise DriverError("Docker requires an exact locally available image SHA256")
         self.image = image
         self.workspace_root = Path(workspace_root).resolve(strict=True)
