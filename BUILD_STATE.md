@@ -1,72 +1,66 @@
 # Build state
 
-Functional deterministic pilot on `build/first-pilot`, with local commits through
-`949c82020dcbe8b5c6b763d7085b9d26401f2162` and a tested final cancellation repair.
-Not release-certified. No deployment, live model calls, private project access,
-pushes, cloud services, or host-service changes have been performed.
+Status: functional deterministic first pilot on `build/first-pilot`. Tested code:
+`2157914e776b42112e00ec3a760eec7fc024022a`. Subsequent documentation commits do not
+change this code. Acceptance is incomplete: 42 requirements passed, 4 blocked.
+No deployment authorized. No ongoing jobs or promised continuation after this session.
 
-## What exists
+## Implemented
 
-Strict contracts and recipe identities; generated external numerical/counterexample
-Git fixtures; nonexecuting complete source snapshots and independent candidates;
-SQLite authority, budgets, attempts, leases, reconciliation and history; bounded
-artifact ingestion, lineage, invalidation, retention and export/import; independent
-finite-domain evaluation and honest negative findings; mock/replay adapters;
-trusted-fixture development execution and an actual tested Docker backend; CLI;
-clean-install and machine-readable acceptance reporting.
+Strict typed contracts/recipe identities; generated external numerical and
+counterexample Git fixtures; nonexecuting complete snapshots and independent
+candidates; SQLite authority, budgets, attempts, leases, reconciliation and history;
+bounded immutable artifacts, lineage/invalidation/retention/export/import;
+independent finite-domain evaluation and honest negative findings; mock/replay
+agents using the approved TaskSpec/Attempt ledger; development and Docker drivers;
+active fixture conformance; CLI; clean-install and acceptance-report tooling.
 
-Final coverage repairs add approved, budgeted offline agent tasks with durable
-failures, active fixture conformance, and actual independent progress beside a
-blocked branch. A fixture campaign now explicitly accounts for one agent attempt
-and two scientific trials; proposal creation runs no agent. Live entry points
-remain unavailable. See `docs/USAGE.md`, `docs/DECISIONS.md`, and `docs/PROVIDER_STATUS.md`.
+Each approved fixture campaign accounts for one offline agent task and two
+scientific trials (three attempts, eleven reserved seconds, zero model calls/tokens).
+Proposals alone grant no execution. Agent failures have durable diagnostics and
+conservative recovery. Cancellation can confirm a stopped reader despite malformed
+or unavailable plans without claiming the plan contents are verified.
 
-## Verified evidence
+## Verified on 2026-09-06 local / 2026-09-07 UTC
 
-Exact `949c820` complete core run: 223 passed, 1 skipped (A28), 12 deselected,
-16.62s, exit 0; `/private/tmp/kestrel-verification-949c820/core.xml`.
-Subsequent static review found that an invalidated/malformed offline agent plan
-prevented cancellation of a reserved attempt. The reservation remains held
-(fail-closed), but the known-stopped reader needs a historical cancellation path.
-The repair passed 43 focused tests, 1 skipped (A28), exit 0, 1.17s:
-`/private/tmp/kestrel-agent-cancellation-repair.xml`. It covers malformed,
-invalidated, deleted, tampered and restricted plans, cancellation interruption,
-and wrong-backend stop-proof rejection. Final suites must test the new commit.
+Final evidence: `/private/tmp/kestrel-verification-2157914/`.
+Exact commands, platform versions and hashes: `docs/VERIFICATION.md`.
 
-Exact `a75fb83` evidence: `/private/tmp/kestrel-verification-a75fb83/`.
-Serial commands exited 0: core suite 192 passed, 1 skipped, 12 deselected;
-`uv build --offline`; fresh external offline wheel install/demo 1 passed;
-Docker Linux VM suite 11 passed, 19 deselected. Ruff and specification integrity
-passed. The installed demo ran two campaigns/four scientific attempts, differences
-4 and 2, both `not_supported`, zero provider calls. These artifacts predate the
-current coverage repairs and must not certify them.
+- Core: `.venv/bin/python -m pytest -m 'not isolation and not install' -q`, exact-revision JUnit `core.xml`: 230 passed, 1 skipped (A28), 12 deselected, 16.04s, exit 0.
+- Build: `uv build --offline`, exit 0. Wheel SHA256 `212f7f1bb9a00f9148332654f2de3d4a06f620d1aa3b1f065d29a0e24b57f0ab`.
+- Fresh external offline install: `.venv/bin/python -m pytest tests/test_install.py -q`, `install.xml` and `install-evidence.json`: 1 passed, 4.00s, exit 0; empty cache, verified local wheelhouse, no index/builds/downloads.
+- Actual Linux VM isolation: `.venv/bin/python -m pytest tests/test_runners.py -m isolation -q`, `isolation.xml`: 11 passed, 19 deselected, 18.66s, exit 0. Existing exact image only; all test containers removed.
+- Ruff, `git diff --check`, and `python3 tools/validate_pack.py` passed (exit 0). All 20 supplied specification files and 46 requirements are unchanged. Runtime suites ran serially.
+- Installed demo: two COMPLETE campaigns, six attempts (two agents/four workers), verified differences 4 and 2, both `not_supported`, zero provider calls. `demo.json`, `numerical-evidence.zip`, `counterexample-evidence.zip` retained externally.
+- `tools/release_gates.py` from final XML records: exit 1 as required for incomplete acceptance. Core 36 passed/A28 blocked; isolation 6 passed; live A30/A31 and GPU A43 blocked; no missing tests or provenance issues. Report SHA256 `d938f3baa954da308dcdbc03a2adc6964d939b6f1540957855bc6b000f71562d`. Full hashes in `sha256.json`.
 
-Current working-tree checks: source-registration tests 25 passed (exit 0);
-application/adversarial/conformance tests 34 passed in 11.57s (exit 0), recorded in
-`/private/tmp/kestrel-coverage-integration.xml`. Agent failure/recovery/reader tests
-36 passed, 1 skipped (A28), exit 0, `/private/tmp/kestrel-agent-execution.xml`.
-Ruff and `git diff --check` pass. Source A05/A08 tests now have explicit mappings.
+Independent audit of `f5bc705` found a late-dispatch cancellation race and mixed
+content lineage; `a75fb83` repaired both with regressions and independent static
+recheck. Later coverage review drove tracked agent attempts, active conformance,
+actual blocked-branch progress and invalid-plan cancellation. Final tests cover
+these additions; no new independent deployment audit is claimed. Earlier revision
+records remain historical and are not used to certify current source.
 
-Independent audit of `f5bc705` found a cancelled-before-dispatch launch race and
-shared-content lineage mixing. Committed `a75fb83` repairs passed regressions;
-an independent static-only recheck found both mechanisms addressed. Original
-reports: `/private/tmp/kestrel-independent-review-fxaOwH/audit/REPORT.md` and
-`/private/tmp/kestrel-independent-recheck-mhVoWd/RECHECK.md`. Neither is a target
-Linux deployment audit, nor an audit of subsequent new integration code.
+## Blockers and exact next action
 
-## Limits and next action
+A28 requires actual sanitized public-synthetic Codex/Claude captures; synthetic
+wire fixtures are not a pass. A30/A31 require explicitly authorized live provider
+and credential integration; no provider version/model has a working live test.
+A43 requires actual target GPU testing. Docker Desktop Linux VM measurements do
+not establish or authorize a separately operated target Linux controller.
 
-A28 actual sanitized Codex/Claude captures are unavailable; documentation-based
-synthetic events do not satisfy that core gate. A30/A31 live/credential integration
-is unauthorized and untested; A43 target GPU is untested. No skipped gate passes.
-Docker Desktop Linux VM measurements do not establish separately operated target
-Linux controller/credential authority. Hard writable-workspace storage quotas are
-unsupported and requested hard caps are rejected. Developer CLI execution is
-restricted to exact synthetic fixtures; general isolated project execution is
-not enabled. Finite parser elapsed checks and developer subprocesses are not
-adversarial security boundaries.
+Developer CLI executes exact synthetic fixtures only. General isolated campaign
+execution is not enabled. Hard writable-workspace quotas are unsupported and
+requests fail closed; the watchdog is advisory. Finite parser elapsed checks and
+plain subprocesses are not adversarial security boundaries. The daemon/supervisor
+must remain responsive; uncertainty retains capacity. No host-wide resource cap
+or general scientific correctness is claimed.
 
-Exact next action: commit the verified cancellation repair, then serially run complete core,
-rebuilt clean install and actual container suites
-for that exact revision. Regenerate acceptance evidence and record its hashes and
-remaining operator gates. Preserve all 20 supplied specification files unchanged.
+Next action requiring new input: supply provenance-bearing sanitized public
+Codex/Claude captures in the format checked by `tests/test_provider_records.py`,
+then run that gate offline with `KESTREL_PUBLIC_PROVIDER_CAPTURES` and regenerate
+revision-bound evidence. Generating new live captures requires explicit authority.
+Before deployment, a separate operator must review this wheel/current source and
+the target Linux service, credential and mount boundaries, then authorize it.
+No push, publication, private research access, live call or host-service change
+has been performed. Runnable setup/demo and conformance commands: `docs/USAGE.md`.
