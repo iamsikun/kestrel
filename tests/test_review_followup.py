@@ -107,3 +107,17 @@ def test_amended_campaign_executes_only_under_its_new_approval(pending_result):
     assert report["finding"] == "not_supported"
     assert report["evidence"][0]["attributable"] and report["evidence"][0]["consistent"]
     assert len(report["attempts"]) == 3
+
+
+@pytest.mark.acceptance("A45")
+def test_public_memory_access_logs_the_permission_actually_used(tmp_path):
+    with Lab.initialize(tmp_path / "lab") as lab:
+        record = lab.controller.record_memory("source", {"kind": "methodology"},
+            classification="public", shareable=True, deidentified=True,
+            token=(lab.root / "operator.token").read_text())
+        assert lab.controller.retrieve_memory(record, principal="no-project-grant",
+                                               requesting_project="source") == {"kind": "methodology"}
+        event = lab.controller.events()[-1]
+        assert event["kind"] == "memory_retrieval_allowed"
+        assert event["detail"]["cross_project"] is False
+        assert event["detail"]["reason"] == "approved public de-identified sharing"

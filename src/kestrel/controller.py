@@ -1387,7 +1387,7 @@ class Controller:
                     content = json.loads(row["content"])
                     reason = (
                         "approved public de-identified sharing"
-                        if cross_project
+                        if cross_project or not permission
                         else "source project permission"
                     )
                 elif cross_project:
