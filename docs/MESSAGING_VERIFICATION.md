@@ -1,6 +1,6 @@
 # Verification of the Telegram messaging implementation
 
-Tested revision: `b7fbb1948a2d1d097b4b720e8208606ae8147797` on
+Tested revision: `52a2d685ad8a74ad299ee4b35e4f67bb048fbfde` on
 `build/telegram-messaging`, branched from the planning branch tip `b944687`
 (which carries one unrelated local installation note above the planning commit
 `28ec895`; that work is preserved, not dropped). The working tree was clean when
@@ -42,7 +42,7 @@ mapping changed.
 ## Exact commands
 
 ```sh
-export KESTREL_SOURCE_REVISION=b7fbb1948a2d1d097b4b720e8208606ae8147797
+export KESTREL_SOURCE_REVISION=52a2d685ad8a74ad299ee4b35e4f67bb048fbfde
 .venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py
 python3 tools/validate_pack.py
 git diff --check
@@ -73,10 +73,16 @@ uv run --offline kestrel demo --offline
     --blocker 'A43=Target GPU untested'
 ```
 
-The release-gate command intentionally exits 1 while `A28` is blocked. After the
-isolation run, `docker container ls -a --filter label=kestrel.attempt` showed one
-exited container created at 15:16, which predates this run by 36 minutes and did
-not come from it; this run left none of its own.
+The release-gate command intentionally exits 1 while `A28` is blocked; it
+reported no integrity issues. After the isolation run,
+`docker container ls -a --filter label=kestrel.attempt` showed one exited
+container created earlier in the day that predates this work and did not come
+from these runs; the isolation suite left none of its own.
+
+`demo.json`, `offline-walkthrough.txt` and `validate-pack.json` were produced at
+the immediately preceding revision `b7fbb19`, which differs from the tested
+revision only in documentation and in the `specs/messaging-acceptance.json`
+split of N-A12; no runtime code changed between them.
 
 ## Evidence
 
@@ -87,11 +93,11 @@ ordinary system cleanup; preserve them externally for long-term provenance.
 
 | File | SHA256 |
 |---|---|
-| `core.xml` | `fb7e1c6e9a943f2e68c0f7ca0125ad0c836f61db12a18cff02a80ce1847ddf05` |
-| `install.xml` | `6dcfe29e7d2414e33842b6869dd227a8b1e2f95114a7102d84fa2e32ac0e6b16` |
-| `isolation.xml` | `df95817058e1cc7406ccab2479f79d350b4dfdcb60463a357444aaab694bfdc9` |
-| `release-gates.json` | `9bf680f936c35d92d9449635196fa2f5b4338aa3989b2c2e362718da94a4eee0` |
-| `install-evidence.json` | `6b252d9605d0425ffa64e61e4bf146fc9e19061bee659f4c02590d8727a0cfc1` |
+| `core.xml` | `7e1631c17d12d557abb5ffec849ae54531118f336d9377b71035ce7e408963b3` |
+| `install.xml` | `5fa74c2cb8623120aaec7ec58734fd20c3c36ff727aa1a9158b043d575de06e8` |
+| `isolation.xml` | `4cc44f2b708badb97c33d3eda4e5bd6294720ff7597119b093b0c5fe3c4e615b` |
+| `release-gates.json` | `918b13aeb519960d4cbbdda2ed36a558b5ccb157d0c8a5cb21463cad88435396` |
+| `install-evidence.json` | `519ad359a586bb867e8b9cad59bbc7f2e1a15020e49470c2d4bf06cbd9cbde78` |
 | `demo.json` | `e0ac6ce57137eb7bf9019f77ba7b5a401ef74850a52cb4c980026109f731ab84` |
 | `offline-walkthrough.txt` | `a74f6bf1c89bce9be050325035ad3fc9c4ebb7ec6de2fef39a100752a15368fc` |
 | `validate-pack.json` | `2d5bac91e08a9f628d2884d1542fe56f0fd37597fbed57710f3d229fe9f0aa2f` |

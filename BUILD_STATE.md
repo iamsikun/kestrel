@@ -2,7 +2,7 @@
 
 Telegram messaging T0-T3 and T5 implemented, T4 prepared and inert (2026-09-07).
 Branch `build/telegram-messaging`; verified revision
-`b7fbb1948a2d1d097b4b720e8208606ae8147797`; commands, hashes and residual limits
+`52a2d685ad8a74ad299ee4b35e4f67bb048fbfde`; commands, hashes and residual limits
 in [docs/MESSAGING_VERIFICATION.md](docs/MESSAGING_VERIFICATION.md); operator
 steps in [docs/MESSAGING_OPERATIONS.md](docs/MESSAGING_OPERATIONS.md).
 
@@ -40,7 +40,7 @@ deferred. Prior blockers A28, A30, A31 and A43 are unchanged. The demonstrated
 boundary is what each process is given, not what an operating system denies, and
 this author cannot also be the independent review.
 
-Next unblocked action: an independent review of `3c47dc3..b7fbb19`, starting with
+Next unblocked action: an independent review of `3c47dc3..52a2d68`, starting with
 docs/MESSAGING_VERIFICATION.md and the disclosure and delivery paths. After that,
 the first authorized synthetic Telegram test follows docs/MESSAGING_OPERATIONS.md
 section 4, which needs an operator-created bot, a mode-0600 credential file, and
