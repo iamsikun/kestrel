@@ -1,5 +1,22 @@
 # Build state
 
+README quickstart (2026-09-07): root README now documents the implemented demo,
+result inspection/export, and current agent limits. USAGE includes a runnable
+manual fixture campaign. Original README archived at `docs/specification/README.md`;
+only its manifest path changed, preserving the original size/hash and all 20 kit
+payload checks. Rationale is recorded in docs/DECISIONS.md. No runtime changes.
+Verification: `bash /private/tmp/kestrel-readme-check-2ys6g4j1/walkthrough.sh`, exit 0;
+README and manual walkthrough shell blocks ran sequentially with a fresh lab path
+and offline cached setup. Three campaigns / nine stopped successful attempts /
+three valid ZIP packets / zero provider calls. Receipt with script/log/artifact
+hashes: `/private/tmp/kestrel-readme-check-2ys6g4j1/receipt.json`, SHA256
+`1e58e46f91f2f6f728592bb7a3bc720f1b41bf457289972dce4ca277c2852a25`.
+Pack validator, unchanged-requirement/manifest-relocation checks, documentation
+links/anchors, and `git diff --check`: exit 0. Full runtime suites, clean package
+install, isolation, provider and GPU gates were not rerun for these docs; prior
+evidence and blockers below remain. Next product work remains the general isolated
+synthetic campaign path; README changes do not enable it or grant deployment.
+
 Messaging design consolidation (2026-09-07):
 [docs/proposals/MESSAGING.md](docs/proposals/MESSAGING.md) now covers assistant
 behaviors, source-aware projection/inbox, approved-envelope delivery, attention

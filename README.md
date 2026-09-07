@@ -1,52 +1,121 @@
 # Kestrel
-## An evidence-first research runtime
 
-**Status: build specification, not an implemented framework.** This kit is an original proposal for a new, standalone project. No existing research repository is a dependency or template. The working name is not a claim that package names or trademarks are available.
+Kestrel runs bounded research experiments and records the evidence behind their
+results. **The current release is an offline developer pilot:** you can run two
+synthetic experiments, inspect their attempts and findings, and export their
+evidence. It uses a deterministic mock coding agent.
 
-Kestrel should turn a scientific brief into an authorized research campaign, isolate its candidate implementations, execute and evaluate work, and produce evidence-backed decisions. It should work with independent repositories and multiple coding-agent providers. It should not become a universal trainer, an unbounded autonomous shell, or a system that equates positive findings with success.
+**You cannot yet give it an arbitrary research task or connect a live Codex/Claude
+agent.** Registering your own project does not enable running it. General project
+execution, live providers, and the broader personal assistant loop are unfinished.
 
-## Start here
+## Run it now
 
-1. Extract this kit into an empty Git repository.
-2. Run `python3 tools/validate_pack.py` to verify this specification kit.
-3. Read `docs/BUILD.md`, especially the first-pilot boundary.
-4. Give the coding agent `prompts/BOOTSTRAP.md`.
-5. Let it decompose and implement unblocked work. Human review is for authority changes, consequential scientific choices, and deployment—not every internal task.
-6. Before live unattended use, perform the independent audit in `prompts/AUDIT.md`.
+Prerequisites: Git and `uv` on your PATH. The setup below selects Python 3.13 and
+installs the locked dependencies; setup may need network access. No model account,
+API key, Docker, or GPU is needed for this demo.
 
-The `kestrel ...` commands in the documents are **target interfaces to implement**, not commands provided by this kit. The validator checks the kit's integrity and internal references; it does not establish that the framework exists or works.
+Open a terminal in this repository and run:
 
-## Non-negotiable boundaries
+```sh
+uv sync --locked --python 3.13
+uv run --offline kestrel doctor
+uv run --offline kestrel demo --offline --output /tmp/kestrel-first-lab
+```
 
-- The framework source repository contains framework code, protocols, tests, synthetic fixture generators, and documentation only.
-- User research repositories remain external. No vendoring, submodules, symlinks, or editable mounts of active user projects inside the framework source tree.
-- Lab configuration, private briefs, registry entries, runtime snapshots, results, credentials, and controller databases live outside the framework source tree.
-- Agents propose actions; a deployed controller authorizes and records actions.
-- Workers do not receive controller database access, policy-edit authority, evaluator-authoring privileges, host credentials, or final labels.
-- A valid negative or inconclusive result is a successful research outcome.
-- No method or test suite makes arbitrary scientific claims automatically true. Assurance must state exactly which checks ran and what remains unverified.
+`/tmp/kestrel-first-lab` must be a **new directory outside this checkout**. If it
+already exists, choose another name. To let Kestrel choose a fresh temporary
+directory automatically, omit `--output /tmp/kestrel-first-lab`.
 
-## Document map
+`doctor` describes the available developer profile and blocked features. It does
+not run acceptance tests. The demo initializes a lab, creates two synthetic Git
+projects, approves its fixed campaigns using the lab's local developer token,
+runs a mock-agent task and two worker attempts per campaign, and prints JSON.
+The demo handles these steps automatically; it does not prompt you for a question.
 
-| File | Purpose |
+Expected findings:
+
+| Experiment | Baseline | Candidate | Finding |
+|---|---|---|---|
+| Numerical prediction | Mean squared error 0 | Mean squared error 4 | `not_supported` |
+| Integer counterexample search | 0 counterexamples | 2 counterexamples | `not_supported` |
+
+`not_supported` is the expected successful result: the proposed improvements are
+deliberately worse. Each report should show `state: COMPLETE`,
+`execution: succeeded`, `validity: valid`, and `assurance: independently_recomputed`.
+There are six attempts across the two campaigns and zero provider calls.
+
+## Inspect and export a result
+
+Continue in the same repository. These commands read the first campaign ID from
+the saved demo output, so there are no IDs to invent or copy manually:
+
+```sh
+KESTREL_LAB=/tmp/kestrel-first-lab
+KESTREL_CAMPAIGN=$(uv run --offline python -c 'import json,sys; print(json.load(open(sys.argv[1]))["reports"][0]["campaign_id"])' "$KESTREL_LAB/demo.json")
+
+uv run --offline kestrel --lab "$KESTREL_LAB" campaign inspect "$KESTREL_CAMPAIGN"
+uv run --offline kestrel --lab "$KESTREL_LAB" campaign report "$KESTREL_CAMPAIGN"
+uv run --offline kestrel --lab "$KESTREL_LAB" evidence export "$KESTREL_CAMPAIGN" --output "$KESTREL_LAB/numerical-evidence.zip"
+```
+
+If you chose another demo directory, change `KESTREL_LAB` accordingly.
+`inspect` shows the frozen question, candidate recipes, controls, and budget.
+`report` shows the outcome, every attempt, and the evidence references.
+`numerical-evidence.zip` contains the first campaign's portable evidence packet.
+Use a fresh export filename if that file already exists.
+
+The lab also retains:
+
+- `demo.json`: reports for both campaigns and the resolved lab path.
+- `evidence-packet`: a ZIP containing the demo's second campaign, despite having
+  no `.zip` extension.
+- `runtime/`: execution records, candidate workspaces, and artifact storage.
+- `definition/`: generated project registrations.
+- `operator.token`: the local approval credential; do not share it with workers
+  or include it in evidence packets.
+
+Temporary directories may be cleaned by the operating system. For results you
+want to retain, choose a new persistent lab directory outside this checkout when
+running the demo.
+
+## Run campaigns manually
+
+The CLI also exposes `lab init`, `project register`, `campaign propose`, `approve`,
+`run`, `status`, and `cancel`. The [manual walkthrough](docs/USAGE.md#manual-fixture-campaign)
+starts from the generated demo project and explains exactly where each ID comes
+from. A new brief still uses the built-in fixture comparison; its wording does
+not generate a new experiment design.
+
+For interrupted work, rerun the same `campaign run` command with its existing
+campaign and approval IDs. Kestrel reconciles existing jobs before proceeding.
+If it reports that a job remains uncertain, it could not confirm termination.
+On macOS, a restricted execution environment may block the process inspection it
+needs; run this trusted demo from an ordinary terminal. Preserve the lab and job
+journals rather than deleting them to force a retry. The development driver is
+for known fixtures and provides no adversarial isolation for arbitrary code.
+
+Command help:
+
+```sh
+uv run --offline kestrel --help
+uv run --offline kestrel campaign --help
+uv run --offline kestrel campaign approve --help
+```
+
+## Where to go next
+
+| Document | Use it for |
 |---|---|
-| `AGENTS.md` | Rules for agents building Kestrel |
-| `docs/PRODUCT.md` | Product boundary and adoption model |
-| `docs/ARCHITECTURE.md` | Components, identities, durable execution, evidence |
-| `docs/PROTOCOL.md` | External project integration contract |
-| `docs/SECURITY.md` | Threat model and actual enforcement requirements |
-| `docs/SCIENCE.md` | Scientific validity and interpretation rules |
-| `docs/BUILD.md` | Agent-executed implementation sequence |
-| `specs/milestones.json` | Dependency-ordered delivery increments |
-| `specs/acceptance.json` | Adversarial first-pilot acceptance conditions |
-| `examples/` | Illustrative manifests and policies, not registrations |
-| `prompts/` | Implementation, resumption, and independent review prompts |
-| `docs/SOURCES.md` | Primary documentation supporting technical choices |
+| [Usage](docs/USAGE.md) | Manual fixture campaigns, recovery, and verification commands |
+| [Repository guide](docs/REPOSITORY_GUIDE.md) | Code map, runtime layout, and capability gaps |
+| [Build state](BUILD_STATE.md) | Current evidence and remaining blockers |
+| [Provider status](docs/PROVIDER_STATUS.md) | What mock/replay supports and why live agents are unavailable |
+| [Product design](docs/PRODUCT.md) | The intended personal research assistant |
+| [Security](docs/SECURITY.md) and [science](docs/SCIENCE.md) | Execution boundaries and rules for scientific conclusions |
 
-## First-pilot definition
-
-A fresh install should complete an offline campaign against two generated external projects, isolate conflicting candidate changes, recover from an interrupted job, reject a tampered evaluator and fabricated metric, account for every attempt, and report a negative finding honestly. A live coding agent is an optional subsequent gate; lack of credentials must not block completion of the offline pilot.
-
-## Deliberately not in the first pilot
-
-Multi-tenant SaaS, Kubernetes, a new general-purpose workflow engine, a vector database, a GPU training stack, automatic trading, external publication, physical-laboratory actuation, a custom model API gateway, universal statistical inference, or self-deployment of modified controller policy.
+The original build-kit README is preserved at
+[docs/specification/README.md](docs/specification/README.md). Original design
+documents and `examples/` describe intended interfaces, some of which remain
+unimplemented. `tools/validate_pack.py` checks the original specification payloads;
+its `framework_implemented: false` field is not a check of today's runtime.
