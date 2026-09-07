@@ -246,3 +246,15 @@ remain unauthorized and undone.
 - Execution-only experiments share the controller ledger and operator approvals.
   They provide protocol-checked, self-reported project output, with no scientific
   evaluation claim. No live provider, implicit image pull, host fallback or deploy.
+
+- Preserve the original validator itself as a pinned specification artifact. The
+  new `tools/validate.py` wrapper changes only presentation: it removes the original
+  kit's fixed `framework_implemented` declaration and emits `runtime_verification:
+  not_run`. All original 46 requirements and original file hashes are retained.
+- Preserve input invalidation as a launch blocker, but use the immutable controller
+  contract for cancellation even when evidence was invalidated. A historical stop
+  receipt does not restore validity. Both pre-launch and running-worker regressions
+  cover this distinction.
+- Keep execution-only outcome interpretation compatible with shared reports and
+  briefings. Expose actual process success separately from protocol validity;
+  scientific outcome stays `not_evaluated`, including a successful self-report.
