@@ -1,5 +1,18 @@
 # Implementation decisions
 
+## 2026-09-07 — make the root README a current user entry point
+
+- The user's request for usable README instructions supersedes the earlier choice
+  to keep the original kit introduction at the repository root. Archive its exact
+  bytes at `docs/specification/README.md` and change only that entry's path in
+  `kit-manifest.json`, retaining its original size and SHA-256. The validator still
+  checks all 20 original payloads; acceptance requirements, milestones, security
+  rules, and validator behavior remain unchanged. This is a documented relocation,
+  not a new checksum certifying an edited specification.
+- The root README becomes maintained implementation documentation: the offline
+  demo, how to inspect/export results, and the explicit absence of general research
+  project execution or a live agent. No runtime capability or authority is added.
+
 ## 2026-09-06 — first pilot
 
 - Preserve the supplied specification files and their integrity manifest unchanged.

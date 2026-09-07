@@ -6,6 +6,14 @@ on 2026-09-07 at `a73f5387400f3d5eb9d024ee45782b98192b9e0e`; runtime code is unc
 from `ac9879e9a7725558468112f9f3950c687cf0a84d`. This is an orientation and product
 gap assessment, not an independent deployment audit.
 
+Update after project integration: the component map and gap assessment below
+describe that earlier fixture pilot. The new [project tutorial](PROJECT_TUTORIAL.md)
+covers connected projects, revisioned selected snapshots, bounded source edits,
+and controller-backed execution-only Docker experiments. Read [BUILD_STATE](../BUILD_STATE.md)
+for current verification; general scientific planning and evaluation remain separate.
+The historical statements below about absent project execution are superseded
+by this workflow, which reports project outputs as self-reported.
+
 Kestrel currently provides a substantial research execution and evidence core,
 connected to a deliberately narrow offline demonstration. It can preserve a
 question, freeze a comparison, enforce local approval and budget rules, track
@@ -19,13 +27,15 @@ Three different stages coexist:
 
 | Stage | Where to read it | How to interpret it |
 |---|---|---|
-| Original product and build requirements | `README.md`, original architecture/product/protocol/security/science/build documents, `specs/`, `examples/`, `prompts/` | Intended behavior and acceptance requirements, including work still absent |
-| Current implementation | `src/kestrel/`, `tests/`, `docs/USAGE.md`, `docs/PROVIDER_STATUS.md` | Available code and the supported developer workflow |
+| Original product and build requirements | `docs/specification/README.md`, original architecture/product/protocol/security/science/build documents, `specs/`, `examples/`, `prompts/` | Intended behavior and acceptance requirements, including work still absent |
+| Current implementation | `README.md`, `src/kestrel/`, `tests/`, `docs/USAGE.md`, `docs/PROVIDER_STATUS.md` | Available code and the supported developer workflow |
 | Build and review history | `BUILD_STATE.md`, `docs/DECISIONS.md`, `docs/REVIEW_FOLLOWUP.md`, `docs/VERIFICATION.md` | Decisions, repairs, measured evidence, and remaining gates |
 
-The README's statement that this is only a specification predates implementation.
-It remains unchanged because `kit-manifest.json` pins the original 20 files by
-size and SHA-256. `tools/validate_pack.py` therefore still reports
+The original README's statement that this is only a specification predates
+implementation. It is now archived at `docs/specification/README.md`, and the root
+README supplies the current quickstart. `kit-manifest.json` pins the original 20
+payloads by size and SHA-256, including that relocated README with its original
+hash. `tools/validate_pack.py` still reports
 `framework_implemented: false`: that field describes the original kit validator,
 not a runtime discovery result. The architecture's directory tree is also a
 proposal; the implemented package uses flat Python modules. Its suggested Typer
@@ -52,7 +62,7 @@ kestrel/
     validate_pack.py         Original specification integrity checker
     release_gates.py         Acceptance accounting from actual JUnit evidence
     prepare_wheelhouse.py    Hash-verified dependency wheels for offline installation
-  README.md                 Preserved original kit introduction
+  README.md                 Current runnable quickstart
   BUILD_STATE.md            Concise implementation handoff and evidence pointers
   AGENTS.md / CLAUDE.md      Instructions for agents developing this framework
   pyproject.toml            Package, CLI entry point, dependencies, test/lint setup

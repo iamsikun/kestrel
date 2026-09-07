@@ -1,5 +1,19 @@
 # Build state
 
+PR #3 conflict resolution (2026-09-07): merged `origin/main` at `f467743`.
+Combined the upstream runnable fixture quickstart with project integration, retained
+upstream quickstart evidence, and clarified outdated execution-limit statements in
+USAGE and the historical repository guide. Runtime, tests and dependencies are
+unchanged from the PR head. `python3 tools/validate.py`, Ruff, documentation
+links/anchors/fences, exact upstream quickstart preservation, and `git diff --check`
+passed (exit 0). `pytest tests/test_integration.py -m 'not isolation' -q` passed:
+22 passed / 6 deselected, exit 0. Receipt: `/private/tmp/kestrel-conflict-resolution.json`;
+JUnit: `/private/tmp/kestrel-conflict-resolution-tests.xml`, SHA256
+`8b3e4568b7bb7f89a50c8b0e2bf65b877e79636839c6fc15d81188c75d3b0484`.
+Full core/install/Docker suites were not repeated for this documentation-only merge;
+the previously recorded runtime evidence and remaining deployment gates stand.
+Next action: push the merge commit and confirm GitHub reports PR #3 mergeable.
+
 Existing-project integration implemented and verified on `feat/project-integration`.
 Worktree: `/private/tmp/kestrel-project-integration`, based on committed `3c47dc3`.
 Verified runtime revision: `2805e3b8cfb77a202ad8c874454241892542ea06`. Later build-state documentation
@@ -76,3 +90,22 @@ Implementation task complete. Exact next unblocked action: independently review
 this branch and verify the evidence hashes before any separately authorized merge
 or deployment. Temporary worktree/evidence paths are subject to OS cleanup; commits
 are retained in the original repository. Prior build history remains in Git.
+
+Retained upstream quickstart evidence:
+
+README quickstart (2026-09-07): root README now documents the implemented demo,
+result inspection/export, and current agent limits. USAGE includes a runnable
+manual fixture campaign. Original README archived at `docs/specification/README.md`;
+only its manifest path changed, preserving the original size/hash and all 20 kit
+payload checks. Rationale is recorded in docs/DECISIONS.md. No runtime changes.
+Verification: `bash /private/tmp/kestrel-readme-check-2ys6g4j1/walkthrough.sh`, exit 0;
+README and manual walkthrough shell blocks ran sequentially with a fresh lab path
+and offline cached setup. Three campaigns / nine stopped successful attempts /
+three valid ZIP packets / zero provider calls. Receipt with script/log/artifact
+hashes: `/private/tmp/kestrel-readme-check-2ys6g4j1/receipt.json`, SHA256
+`1e58e46f91f2f6f728592bb7a3bc720f1b41bf457289972dce4ca277c2852a25`.
+Pack validator, unchanged-requirement/manifest-relocation checks, documentation
+links/anchors, and `git diff --check`: exit 0. Full runtime suites, clean package
+install, isolation, provider and GPU gates were not rerun for these docs; prior
+evidence and blockers below remain. This is historical documentation evidence from before project integration;
+the quickstart alone did not enable general execution or grant deployment.
