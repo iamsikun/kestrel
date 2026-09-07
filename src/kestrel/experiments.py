@@ -92,16 +92,19 @@ class Experiments:
         self.controller.freeze(campaign)
         return self.inspect(campaign)
 
-    def _contract(self, identity: str) -> ExperimentContract:
+    def _contract(self, identity: str, *, verify_evidence: bool = True) -> ExperimentContract:
         campaign = self.controller.campaign(identity)
         contract = ExperimentContract.model_validate(campaign['contract'])
-        if digest(contract) != campaign['digest'] or self.lab.store.get(campaign['digest'])['status'] != 'valid':
+        if digest(contract) != campaign['digest']:
             raise ValueError('Experiment contract integrity failure')
-        self.lab.store.read(campaign['digest'])
+        if verify_evidence:
+            if self.lab.store.get(campaign['digest'])['status'] != 'valid':
+                raise ValueError('Experiment inputs invalidated')
+            self.lab.store.read(campaign['digest'])
         return contract
 
     def inspect(self, identity: str) -> dict:
-        contract = self._contract(identity)
+        contract = self._contract(identity, verify_evidence=False)
         campaign = self.controller.campaign(identity)
         attempts = self.controller.attempts(identity)
         from .contracts import parse_json
@@ -237,7 +240,7 @@ class Experiments:
                       for k, v in r.items() if k in ('execution', 'outputs')]
         packet = self.lab._put({'campaign_id': identity, 'execution': execution, 'validity': validity,
             'finding': 'inconclusive', 'scientific_outcome': 'not_evaluated', 'attempts': attempts},
-            producer=f'experiment:{identity}', lineage=[campaign['digest'], *references])
+            producer=f'experiment:{identity}', lineage=[campaign['digest'], *references], historical=cancelled)
         self.controller.complete(identity, execution_status=execution, protocol_status=validity,
                                  finding='INCONCLUSIVE', evidence_ids=[packet['digest']])
 
@@ -274,7 +277,7 @@ class Experiments:
         return self.inspect(identity)
 
     def cancel(self, identity: str) -> dict:
-        contract = self._contract(identity)
+        contract = self._contract(identity, verify_evidence=False)
         driver = self._driver(contract)
         for task in self.controller.tasks(identity):
             if task['state'] not in TERMINAL and task['state'] != 'ACTIVE':

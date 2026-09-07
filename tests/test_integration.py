@@ -257,6 +257,8 @@ def test_actual_experiment_failures_and_recovery(tmp_path, monkeypatch, scenario
                 lab.close()
                 lab = Lab(tmp_path / 'lab')
                 service = Experiments(lab)
+                if scenario == 'cancel':
+                    lab.store.invalidate(snapshot['digest'], 'synthetic invalidation while running')
                 result = service.cancel(identity) if scenario == 'cancel' else service.run(identity, approval)
                 assert result['attempts'][0]['id'] == attempt_id
                 assert result['outcome']['execution_status'] == ('cancelled' if scenario == 'cancel' else 'succeeded')
@@ -293,3 +295,19 @@ def test_execution_reporting_and_unavailable_enforcement(connected, monkeypatch)
         service.run(identity, 'no-approval')
     assert not lab.controller.attempts(identity)
     assert service.cancel(identity)['outcome']['execution_status'] == 'cancelled'
+
+
+def test_invalidated_inputs_block_launch_but_allow_cancel(connected):
+    lab, connections, _ = connected
+    preview = connections.preview('arithmetic')
+    snapshot = connections.snapshot('arithmetic', preview['selection_digest'])
+    service = Experiments(lab)
+    proposal = service.propose(snapshot['digest'], 'calculate')
+    identity = proposal['experiment_id']
+    lab.store.invalidate(snapshot['digest'], 'synthetic invalidation')
+    with pytest.raises(ValueError, match='invalidated'):
+        service.run(identity, 'unused')
+    result = service.cancel(identity)
+    assert result['outcome']['execution_status'] == 'cancelled'
+    assert result['protocol_validity'] == 'invalid'
+    assert result['budget_charged']['attempts'] == 0
