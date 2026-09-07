@@ -1,5 +1,25 @@
 # Build state
 
+Telegram messaging T2 (2026-09-07): approved-envelope delivery on
+`build/telegram-messaging`. New `src/kestrel/notifications.py` with operator-issued
+channels and service grants, template-driven disclosure with classification
+inheritance and release scanning, atomic envelope publication, 60-second release
+permits, the PENDING/READY/SENDING/ACCEPTED/RETRY_WAIT/UNCERTAIN/terminal state
+machine, daily and reserved-critical quotas, spool byte budget, single-sender
+lease with uncertainty-preserving takeover, and offline `FakeTransport` /
+`NoEgressTransport`. A separate messaging operator credential is provisioned by
+`notify init`. `tests/test_notifications.py` adds 46 cases including a Hypothesis
+delivery-lifecycle state machine. Commands and results:
+`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`
+exit 0; `python3 tools/validate_pack.py` exit 0; `git diff --check` exit 0;
+`KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q`
+— 362 passed, 1 skipped (A28), 12 deselected, exit 0. Evidence:
+`/private/tmp/kestrel-telegram-messaging/core-t2.xml`.
+Only the offline scripted transport exists; nothing was sent and no bot,
+credential, service or deployment was created. N-A05 and N-A12 remain unpassed:
+they need the Linux deployment profile and measured OS denial. Next action: T3,
+the typed Telegram HTTPS adapter and pairing workflow against fake HTTP.
+
 Telegram messaging T1 (2026-09-07): durable assistant state on
 `build/telegram-messaging`. New `src/kestrel/messaging.py` with its own migrated
 SQLite schema (source bindings, items and revisions, attention history,

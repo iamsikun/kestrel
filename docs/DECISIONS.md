@@ -274,3 +274,44 @@ remain unauthorized and undone.
 - Route is part of item identity, so promoting a completion from digest to timely
   by adding a watch resolves the digest item and opens a distinct watched one
   instead of silently rewriting a recorded revision.
+
+## 2026-09-07 — Telegram messaging T2 (approved envelopes and delivery)
+
+- Notification authority is a separate messaging operator credential provisioned
+  by `notify init`, distinct from the lab's campaign operator token. A campaign
+  approval capability string can never create a notification grant, and a grant
+  confers no `execute`, `network`, `live_provider`, publication or budget
+  authority. This demonstrates service-grant policy in a developer lab; it is
+  not a deployed service identity boundary.
+- The gateway receives an export directory, its own journal and a transport
+  credential. It is never handed a controller or evidence database, an artifact,
+  a project workspace, or an operator token. That separation is enforced by what
+  the process is given, not yet by an operating system; the measured denial
+  remains an unpassed deployment gate.
+- Rendering is template-driven over allowlisted scalar fields. A release scanner
+  for paths, URLs, credential words and secret-shaped strings is defence in
+  depth, not a licence for free text. Clipping preserves the caveat tail and
+  never orphans a combining mark.
+- A view inherits the classification of every contributing source. Identifiers,
+  digests and a bare "there is an update" are still disclosure, so an
+  above-ceiling item is refused entirely and a metadata-only fallback needs its
+  own explicit permission, which is off by default.
+- Export is replayable: the intent is committed first, the envelope is written
+  to a bounded temporary file, verified, then published atomically under a
+  stable name. A crash before publication leaves an intent to export; a crash
+  after it cannot create a second logical notification.
+- `SENDING` is committed before the transport call, so a crash from that point
+  is an unknown outcome. Ambiguity never triggers an automatic resend, a local
+  lease is explicitly not a fence at the provider, and a takeover marks an
+  in-flight send `UNCERTAIN` rather than retrying it. Independent fresh items
+  continue while an ambiguous one waits.
+- Release permits expire in 60 seconds and are the declared bound on revocation
+  propagation for an envelope that has not been transmitted. Refreshing one
+  never resets intent age, retry count or channel quota. Unavailable policy is
+  not permission: the gateway fails closed.
+- Caps count retries and summaries. Reaching one queues the item until its
+  expiry or the next window; there is no uncapped overflow message. Spool
+  saturation pauses export and keeps the unresolved item with a reason code.
+- Delivery tests live in `tests/test_notifications.py` rather than being folded
+  into `tests/test_messaging.py`; the plan's file list is a guide and one file
+  per module keeps the delivery state machine and its adversarial cases legible.

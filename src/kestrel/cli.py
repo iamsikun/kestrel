@@ -7,6 +7,7 @@ import datetime
 import json
 import platform
 import sys
+import time
 from pathlib import Path
 
 from kestrel import __version__
@@ -19,6 +20,15 @@ from kestrel.messaging import (
     MessagingError,
     MilestoneDefinition,
     init_messaging,
+)
+from kestrel.notifications import (
+    Channel,
+    Destination,
+    Exporter,
+    FakeTransport,
+    Gateway,
+    Grant,
+    NoEgressTransport,
 )
 from kestrel.projects import load_sidecar
 from kestrel.runners import DriverError
@@ -86,6 +96,65 @@ def messaging_command(args) -> dict:
                         "authority": "local cursor state; no research record changes"}
             return {**assistant.snapshot_sources(),
                     "authority": "authority-side read of research databases"}
+        if args.action == "channel":
+            exporter = Exporter(assistant)
+            if args.target == "register":
+                existing = exporter.channel(args.channel_id)
+                channel = Channel(channel_id=args.channel_id,
+                                  version=(existing.version + 1) if existing else 1,
+                                  destination=Destination(transport=args.transport,
+                                                          identity=args.identity))
+                return exporter.register_channel(
+                    channel, operator_token=args.operator_token_file.read_text().strip())
+            return {"channels": [dict(row) for row in assistant._db.execute(
+                "SELECT channel_id,version,active,created_at FROM channels "
+                "ORDER BY channel_id,version")], "authority": "local read only"}
+        if args.action == "grant":
+            exporter = Exporter(assistant)
+            if args.target == "issue":
+                previous = assistant._db.execute(
+                    "SELECT MAX(version) FROM grants WHERE grant_id=?",
+                    (args.grant_id,)).fetchone()[0]
+                grant = Grant(
+                    grant_id=args.grant_id, version=(previous or 0) + 1,
+                    principal="operator", channel_id=args.channel_id,
+                    allowed_conditions=[part for part in args.conditions.split(",") if part],
+                    disclosure_ceiling=args.ceiling,
+                    expires_at=time.time() + args.expires_in)
+                return exporter.issue_grant(
+                    grant, operator_token=args.operator_token_file.read_text().strip())
+            if args.target == "revoke":
+                return exporter.revoke_grant(
+                    args.grant_id,
+                    operator_token=args.operator_token_file.read_text().strip())
+            return {"grants": [dict(row) for row in assistant._db.execute(
+                "SELECT grant_id,version,active,revoked_at,created_at FROM grants "
+                "ORDER BY grant_id,version")], "authority": "local read only"}
+        if args.action == "export":
+            return {**Exporter(assistant).export_pending(),
+                    "authority": "renders approved envelopes; no transport is contacted"}
+        if args.action == "delivery":
+            with Gateway(args.messaging_root, owner="cli") as gateway:
+                if args.target == "list":
+                    return {"deliveries": gateway.deliveries(),
+                            "authority": "gateway journal read only"}
+                return {"delivery": gateway.delivery(args.envelope),
+                        "attempts": gateway.attempts(args.envelope),
+                        "authority": "gateway journal read only"}
+        if args.action == "gateway":
+            with Gateway(args.messaging_root, owner="cli") as gateway:
+                if args.target == "intake":
+                    return {**gateway.intake(), "authority": "reads approved envelopes only"}
+                if args.target == "health":
+                    return {**gateway.health(), "authority": "gateway journal read only"}
+                if args.target == "recover":
+                    return {**gateway.recover(),
+                            "authority": "gateway journal only; no message is resent"}
+                transport = FakeTransport() if args.transport == "fake" else NoEgressTransport()
+                return {**gateway.dispatch_once(transport),
+                        "transport": transport.name,
+                        "authority": "offline transport only; live delivery is a separate, "
+                                     "unauthorized gate"}
         if args.action == "ack":
             return {**assistant.acknowledge(args.reference), "authority": "attention only"}
         if args.action == "snooze":
@@ -186,6 +255,40 @@ def parser() -> argparse.ArgumentParser:
     snooze.add_argument("duration", help="30m, 1h, 2d or tomorrow")
     notify.add_parser("pause")
     notify.add_parser("resume")
+    channel = notify.add_parser("channel").add_subparsers(dest="target", required=True)
+    channel_register = channel.add_parser("register")
+    channel_register.add_argument("--id", dest="channel_id", required=True)
+    channel_register.add_argument("--transport", choices=("fake", "telegram"), required=True)
+    channel_register.add_argument("--identity", required=True,
+                                  help="numeric recipient identity, not a display name")
+    channel_register.add_argument("--operator-token-file", type=Path, required=True)
+    channel.add_parser("show")
+    grant = notify.add_parser("grant").add_subparsers(dest="target", required=True)
+    grant_issue = grant.add_parser("issue")
+    grant_issue.add_argument("--id", dest="grant_id", required=True)
+    grant_issue.add_argument("--channel", dest="channel_id", required=True)
+    grant_issue.add_argument("--expires-in", type=float, default=86400.0)
+    grant_issue.add_argument("--conditions", default="",
+                             help="comma separated allowlist; empty means every template")
+    grant_issue.add_argument("--ceiling", default="public_synthetic",
+                             choices=("public_synthetic", "public", "restricted"))
+    grant_issue.add_argument("--operator-token-file", type=Path, required=True)
+    grant_revoke = grant.add_parser("revoke")
+    grant_revoke.add_argument("--id", dest="grant_id", required=True)
+    grant_revoke.add_argument("--operator-token-file", type=Path, required=True)
+    grant.add_parser("show")
+    export = notify.add_parser("export")
+    export.add_argument("--once", action="store_true", required=True)
+    delivery = notify.add_parser("delivery").add_subparsers(dest="target", required=True)
+    delivery.add_parser("list")
+    delivery.add_parser("inspect").add_argument("envelope")
+    gateway = notify.add_parser("gateway").add_subparsers(dest="target", required=True)
+    gateway.add_parser("intake")
+    dispatch = gateway.add_parser("dispatch")
+    dispatch.add_argument("--transport", choices=("fake", "none"), default="none",
+                          help="offline transports only; live sending is a separate gate")
+    gateway.add_parser("health")
+    gateway.add_parser("recover")
     briefing = commands.add_parser("brief", help="read-only briefing from verified records")
     briefing.add_argument("--since", help="UTC epoch seconds or ISO-8601 instant")
     briefing.add_argument("--format", dest="form", choices=("json", "markdown", "plain"),

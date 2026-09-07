@@ -12,8 +12,11 @@ evidence. Resolution is only ever read back from source state.
 from __future__ import annotations
 
 import datetime
+import hashlib
+import hmac
 import json
 import re
+import secrets
 import sqlite3
 import time
 import uuid
@@ -27,6 +30,7 @@ from pydantic import Field
 from kestrel.briefings import build_briefing, evidence_epoch, render_plain, safe_text
 from kestrel.contracts import Identifier, StrictModel, canonical, digest, parse_json
 from kestrel.controller import TERMINAL
+from kestrel.notifications import AUTHORITY_SCHEMA
 from kestrel.reporting import build_report
 from kestrel.sources import LabSources, SourceUnavailable
 
@@ -210,8 +214,16 @@ def init_messaging(root: Path, lab: Path, *, timezone: str = "UTC",
     with path.open("x") as stream:
         path.chmod(0o600)
         stream.write(canonical(config).decode())
+    token = secrets.token_hex(32)
+    token_path = root / "assistant-private" / "operator.token"
+    with token_path.open("x") as stream:
+        token_path.chmod(0o600)
+        stream.write(token)
+    with Assistant(root, config) as assistant:
+        assistant.initialize_operator(token)
     return {"messaging_root": str(root), "lab": str(lab), "timezone": timezone,
             "directories": list(DIRECTORIES),
+            "operator_token_file": str(token_path),
             "note": "Configuration only. No bot, credential, service, schedule daemon or "
                     "egress permission was created."}
 
@@ -318,6 +330,7 @@ class Assistant:
             self._db.close()
             raise MessagingError(f"Unsupported assistant schema version {version}")
         self._db.executescript(SCHEMA)
+        self._db.executescript(AUTHORITY_SCHEMA)
         self._db.execute(f"PRAGMA user_version={ASSISTANT_SCHEMA_VERSION}")
         with self._transaction():
             self._db.execute("INSERT OR IGNORE INTO meta VALUES ('item_counter','0')")
@@ -350,6 +363,33 @@ class Assistant:
     def _set_meta(self, key: str, value: str) -> None:
         self._db.execute("INSERT INTO meta VALUES (?,?) ON CONFLICT(key) DO UPDATE "
                          "SET value=excluded.value", (key, value))
+
+    def initialize_operator(self, token: str) -> None:
+        """Bootstrap the messaging operator credential exactly once.
+
+        This demonstrates service-grant policy in a developer lab. It is not a
+        deployed service identity, and it is deliberately distinct from the
+        lab's campaign operator token so notification authority and execution
+        authority cannot be confused.
+        """
+        if type(token) is not str or len(token) < 32:
+            raise MessagingError("The messaging operator token needs at least 32 characters")
+        with self._transaction():
+            if self._meta("operator_hash") is not None:
+                raise MessagingError("An initialized messaging operator cannot be replaced")
+            salt = secrets.token_hex(32)
+            self._set_meta("operator_salt", salt)
+            self._set_meta("operator_hash",
+                           hashlib.sha256((salt + token).encode()).hexdigest())
+
+    def authenticate_operator(self, token: str) -> None:
+        expected = self._meta("operator_hash")
+        salt = self._meta("operator_salt")
+        if type(token) is not str or expected is None or salt is None:
+            raise MessagingError("Messaging operator authentication is unavailable")
+        actual = hashlib.sha256((salt + token).encode()).hexdigest()
+        if not hmac.compare_digest(expected, actual):
+            raise MessagingError("Messaging operator authentication failed")
 
     def sources(self) -> LabSources:
         return LabSources(Path(self.config.lab))
@@ -550,12 +590,26 @@ class Assistant:
         conditions: list[dict[str, Any]] = []
         watched = {row["scope"]: row for row in self.subscriptions()}
         cutoffs = src.cutoffs()
+        classes: dict[str, str] = {}
         for campaign_id in src.controller.campaign_ids():
+            contract = src.controller.campaign(campaign_id)["contract"]
+            classes[campaign_id] = contract.get("data_classification", "restricted")
             conditions.extend(self._campaign_conditions(src, campaign_id, now=now,
                                                         watched=watched))
         conditions.extend(self._capacity_conditions(src, now=now))
         conditions.extend(self._evidence_conditions(src))
         conditions.extend(self._milestone_conditions(src, now=now))
+        for condition in conditions:
+            # Every view inherits the classification of each contributing
+            # source. Aggregation and identifiers do not declassify anything.
+            contributing = condition["payload"].get("campaign_ids") or []
+            campaign_id = condition["payload"].get("campaign_id")
+            if campaign_id:
+                contributing = [*contributing, campaign_id]
+            inherited = [classes.get(identity, "restricted") for identity in contributing]
+            condition["payload"]["classifications"] = sorted(
+                set(inherited or condition["payload"].get("classifications")
+                    or ["public_synthetic"]))
         return {"cutoffs": cutoffs, "conditions": conditions}
 
     def _campaign_conditions(self, src: LabSources, campaign_id: str, *, now: float,
@@ -699,14 +753,20 @@ class Assistant:
         for event in src.evidence.events():
             if event["kind"] not in {"invalid", "stale", "deleted"}:
                 continue
+            try:
+                classification = src.evidence.get(event["digest"])["classification"]
+            except ValueError:
+                classification = "restricted"
             if groups and groups[-1]["reason"] == event["reason"] \
                     and groups[-1]["last_event_id"] + 1 == event["id"]:
                 groups[-1]["last_event_id"] = event["id"]
                 groups[-1]["affected"] += 1
+                groups[-1]["classifications"] = sorted(
+                    {*groups[-1]["classifications"], classification})
                 continue
             groups.append({"reason": safe_text(event["reason"]), "kind": event["kind"],
                            "first_event_id": event["id"], "last_event_id": event["id"],
-                           "affected": 1,
+                           "affected": 1, "classifications": [classification],
                            "recorded_at": evidence_epoch(event["created_at"])})
         return [{"key": f"evidence:{group['first_event_id']}|evidence_correction",
                  "scope": f"evidence:{group['first_event_id']}",
@@ -736,6 +796,9 @@ class Assistant:
                                       "version": record["version"],
                                       "label": safe_text(record["label"]),
                                       "reached": evaluation["reached"],
+                                      "campaign_ids": sorted(
+                                          clause["campaign_id"]
+                                          for clause in evaluation["clauses"]),
                                       "clauses": evaluation["clauses"]},
                           "salience": "milestone",
                           "milestone_state": "reached" if evaluation["reached"] else "reopened"})
