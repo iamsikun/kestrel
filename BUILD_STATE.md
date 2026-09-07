@@ -1,12 +1,27 @@
 # Build state
 
+Telegram implementation planning (2026-09-07): operator selected Telegram and
+requested no implementation. [Implementation plan](docs/proposals/TELEGRAM_IMPLEMENTATION_PLAN.md)
+defines one private chat, deterministic briefings, read-only source integration,
+T0–T5 delivery slices, pairing/revocation, polling/recovery, tests and activation
+gates. MESSAGING links to it; assumptions are in docs/DECISIONS.md. Documentation
+only; no runtime, dependencies, bot, credentials, schedule, or service created.
+Documentation verification receipt: `/private/tmp/kestrel-telegram-plan/checks.json`.
+Plan SHA256: `55146fd0cc3a1354070a28c0f37006022515856c4e355f4fd31fcab49dc3b9b8`.
+Pack integrity, local document links/fences/whitespace, and unchanged runtime/spec
+checks: exit 0. Runtime, package-install, isolation and live Telegram/deployment
+tests were not run for this planning task; their prior evidence/blockers remain.
+Next action is review of the plan. Only after a request to implement, start T0's
+read-only verified report/briefing slice with synthetic offline tests. Deployment,
+user-data access and live integration gates remain separate and unchanged.
+
 Messaging design consolidation (2026-09-07):
 [docs/proposals/MESSAGING.md](docs/proposals/MESSAGING.md) now covers assistant
 behaviors, source-aware projection/inbox, approved-envelope delivery, attention
 and authorization boundaries, researched transport candidates, and proposed N0–N6
 increments with 20 acceptance conditions. Proposal only; no runtime or pinned
 specification changes. Consequential assumptions are in docs/DECISIONS.md.
-Proposal SHA256: `b56721a3bc252f4b6bf1519f6dc91ceea7224ef13f84a7d1680c771901d31912`.
+Consolidation-time proposal SHA256: `b56721a3bc252f4b6bf1519f6dc91ceea7224ef13f84a7d1680c771901d31912`.
 Check receipt and retained original draft: `/private/tmp/kestrel-messaging-review/`.
 Pack integrity, Ruff, local document links and whitespace checks: exit 0.
 Runtime unit/integration/state-machine/adversarial, install, isolation, live

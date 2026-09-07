@@ -174,3 +174,23 @@ this revision has an author who cannot also be its independent review.
 - Remote approval remains optional and independent of useful conversational
   assistance and literature discovery. No service, schedule, credential, runtime
   permission, provider integration, or host configuration changed in this task.
+
+## 2026-09-07 — Telegram implementation plan (planning only)
+
+- The operator selected Telegram and explicitly prohibited implementation in this
+  task. [proposals/TELEGRAM_IMPLEMENTATION_PLAN.md](proposals/TELEGRAM_IMPLEMENTATION_PLAN.md)
+  specializes the messaging proposal into T0–T5: read-only briefings, durable
+  projection, delivery lifecycle, Telegram adapter, authorized activation, and
+  limited typed replies. No runtime or service setup is authorized by the plan.
+- Plan one bot, private operator chat, and scoped lab, with plain-text deterministic
+  briefs and no model dependency. Use polling for enrollment and later commands;
+  keep remote execution approval, attachments, other transports and literature
+  outside the first messaging release.
+- Start with dedicated read-only interfaces because existing Lab/store constructors
+  initialize writable state. Share verified report semantics; label charged
+  reservations accurately. Preserve separate source and transport/attention state.
+- Explicitly handle ambiguous sends, Telegram inbound retention and idle cursor
+  resets, stale revision acknowledgements, bounded caps, and credential rotation.
+  Real egress requires reviewed operator grants and a measured identity boundary;
+  the development campaign token cannot enable it. Bot credentials remain gateway
+  authority and are not claimed to enforce recipient restrictions themselves.

@@ -7,6 +7,12 @@ proposed. No messaging implementation, service setup, delivery, live model call,
 or new permission is enabled. The original specification, acceptance requirements,
 and integrity-pinned examples remain unchanged.
 
+**Channel selected:** the operator chose Telegram. The concrete next design is
+[TELEGRAM_IMPLEMENTATION_PLAN.md](TELEGRAM_IMPLEMENTATION_PLAN.md), which defines
+the implementation sequence, private-chat enrollment, API behavior, deployment
+gates, and limited replies. The operator requested planning only; implementation
+and service setup have not started. Transport comparisons below remain background.
+
 ## 1. Recommended direction
 
 Build a **persistent assistant inbox with proactive delivery**, backed by Kestrel's
