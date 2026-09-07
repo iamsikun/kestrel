@@ -33,6 +33,7 @@ from kestrel.controller import TERMINAL
 from kestrel.notifications import AUTHORITY_SCHEMA
 from kestrel.reporting import build_report
 from kestrel.sources import LabSources, SourceUnavailable
+from kestrel.telegram import PAIRING_SCHEMA
 
 ASSISTANT_SCHEMA_VERSION = 1
 CONFIG_VERSION = "0.1"
@@ -331,6 +332,7 @@ class Assistant:
             raise MessagingError(f"Unsupported assistant schema version {version}")
         self._db.executescript(SCHEMA)
         self._db.executescript(AUTHORITY_SCHEMA)
+        self._db.executescript(PAIRING_SCHEMA)
         self._db.execute(f"PRAGMA user_version={ASSISTANT_SCHEMA_VERSION}")
         with self._transaction():
             self._db.execute("INSERT OR IGNORE INTO meta VALUES ('item_counter','0')")

@@ -32,6 +32,14 @@ from kestrel.notifications import (
 )
 from kestrel.projects import load_sidecar
 from kestrel.runners import DriverError
+from kestrel.telegram import (
+    API_ASSUMPTIONS,
+    API_DOCUMENTATION,
+    Pairing,
+    TelegramTransport,
+    build_live_client,
+    rotate_credential,
+)
 
 
 def doctor() -> dict:
@@ -43,6 +51,22 @@ def doctor() -> dict:
             "live_agent": "blocked: no authorized provider/credential integration",
             "gpu": "blocked: no authorized target hardware validation",
             "deployment": "not authorized or implemented"}
+
+
+def build_transport(args, assistant):
+    """Select a dispatch transport. Live Telegram is gated, never a default."""
+    if args.transport == "fake":
+        return FakeTransport()
+    if args.transport == "none":
+        return NoEgressTransport()
+    chat = assistant._meta("telegram_chat_id")
+    if chat is None:
+        raise MessagingError("No Telegram chat is paired and confirmed")
+    if args.credential_file is None:
+        raise MessagingError("Supply --credential-file for the telegram transport")
+    client = build_live_client(args.credential_file, channel="telegram",
+                               operation="notify gateway dispatch --transport telegram")
+    return TelegramTransport(client=client, expected_chat_id=int(chat))
 
 
 def messaging_command(args) -> dict:
@@ -150,11 +174,37 @@ def messaging_command(args) -> dict:
                 if args.target == "recover":
                     return {**gateway.recover(),
                             "authority": "gateway journal only; no message is resent"}
-                transport = FakeTransport() if args.transport == "fake" else NoEgressTransport()
+                transport = build_transport(args, assistant)
                 return {**gateway.dispatch_once(transport),
                         "transport": transport.name,
-                        "authority": "offline transport only; live delivery is a separate, "
-                                     "unauthorized gate"}
+                        "authority": ("live Telegram delivery under an explicit operator "
+                                      "activation" if transport.name == "telegram"
+                                      else "offline transport only; live delivery is a "
+                                           "separate, unauthorized gate")}
+        if args.action == "telegram":
+            if args.target == "inspect":
+                pairing = Pairing(assistant, None)
+                return {"sessions": pairing.sessions(),
+                        "rejections": pairing.rejections(),
+                        "bot_id": assistant._meta("telegram_bot_id"),
+                        "chat_id": assistant._meta("telegram_chat_id"),
+                        "epoch": assistant._meta("telegram_epoch", "0"),
+                        "authority": "local read only; no request was made"}
+            if args.target == "assumptions":
+                return {"documentation": API_DOCUMENTATION, "assumptions": API_ASSUMPTIONS,
+                        "authority": "documentation record only; no live integration is "
+                                     "claimed or performed"}
+            if args.target == "confirm":
+                return Pairing(assistant, None).confirm(
+                    operator_token=args.operator_token_file.read_text().strip(),
+                    grant_lifetime=args.grant_lifetime)
+            client = build_live_client(args.credential_file, channel="telegram",
+                                       operation=f"notify telegram {args.target}")
+            if args.target == "rotate":
+                return {**rotate_credential(assistant, client),
+                        "authority": "verifies the credential still names the enrolled bot"}
+            pairing = Pairing(assistant, client)
+            return pairing.begin() if args.target == "begin" else pairing.poll()
         if args.action == "ack":
             return {**assistant.acknowledge(args.reference), "authority": "attention only"}
         if args.action == "snooze":
@@ -285,10 +335,24 @@ def parser() -> argparse.ArgumentParser:
     gateway = notify.add_parser("gateway").add_subparsers(dest="target", required=True)
     gateway.add_parser("intake")
     dispatch = gateway.add_parser("dispatch")
-    dispatch.add_argument("--transport", choices=("fake", "none"), default="none",
-                          help="offline transports only; live sending is a separate gate")
+    dispatch.add_argument("--transport", choices=("fake", "none", "telegram"),
+                          default="none",
+                          help="fake and none are offline; telegram requires the separate "
+                               "activation gate and an operator-provisioned credential")
+    dispatch.add_argument("--credential-file", type=Path,
+                          help="required only for the gated telegram transport")
     gateway.add_parser("health")
     gateway.add_parser("recover")
+    telegram = notify.add_parser("telegram").add_subparsers(dest="target", required=True)
+    for name in ("begin", "poll", "rotate"):
+        step = telegram.add_parser(name)
+        step.add_argument("--credential-file", type=Path, required=True,
+                          help="operator-provisioned bot token file, mode 0600")
+    telegram_confirm = telegram.add_parser("confirm")
+    telegram_confirm.add_argument("--operator-token-file", type=Path, required=True)
+    telegram_confirm.add_argument("--grant-lifetime", type=float, default=30 * 86400.0)
+    telegram.add_parser("inspect")
+    telegram.add_parser("assumptions")
     briefing = commands.add_parser("brief", help="read-only briefing from verified records")
     briefing.add_argument("--since", help="UTC epoch seconds or ISO-8601 instant")
     briefing.add_argument("--format", dest="form", choices=("json", "markdown", "plain"),

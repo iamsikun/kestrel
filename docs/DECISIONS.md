@@ -315,3 +315,34 @@ remain unauthorized and undone.
 - Delivery tests live in `tests/test_notifications.py` rather than being folded
   into `tests/test_messaging.py`; the plan's file list is a guide and one file
   per module keeps the delivery state machine and its adversarial cases legible.
+
+## 2026-09-07 — Telegram messaging T3 (adapter and pairing, offline)
+
+- The adapter is standard library only behind an injectable HTTP seam. No bot
+  framework, webhook server or new runtime dependency was added. Official Bot API
+  documentation was rechecked on 2026-09-07 and the exact behaviours the adapter
+  relies on are recorded in `telegram.API_ASSUMPTIONS`, with
+  `API_DOCUMENTATION["live_integration_verified"] = False`. Passing these tests
+  is not a verified live integration and pins nothing about a hosted service.
+- Exactly four methods are reachable: `getMe`, `getWebhookInfo`, `sendMessage`
+  and `getUpdates`. A method name, URL, recipient or body can never originate
+  from a worker, an assistant item or an inbound message. The origin is fixed,
+  redirects are refused, ambient proxy configuration is ignored, and responses
+  are bounded, duplicate-key checked and mapped into strict records that ignore
+  additive fields while refusing unknown critical shapes.
+- The token is read from a mode-0600 operator file, is never a command-line
+  argument, and is scrubbed from every exception, repr and log record. Logs
+  carry only a method name, a status category, a bounded duration, an opaque
+  channel label and a local attempt id.
+- Live operations fail closed behind `KESTREL_TELEGRAM_ACTIVATED`. This is an
+  activation gate, not a development switch: every offline path works without
+  it and nothing in the codebase sets it.
+- Pairing refuses to proceed when another integration owns the bot's webhook,
+  and never deletes a webhook or discards pending updates. Only the hash of a
+  128-bit nonce is stored, the deep link stays inside the documented parameter
+  format, and an identified chat is only a candidate: a local confirmation with
+  the messaging operator credential is what binds the channel and grant.
+- A misaddressed envelope is refused by the transport as a definitive rejection
+  rather than an ambiguous outcome, because nothing was transmitted and a retry
+  could not help. A failure known to precede transmission retries; anything that
+  may have been transmitted stays uncertain.

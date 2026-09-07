@@ -1,5 +1,25 @@
 # Build state
 
+Telegram messaging T3 (2026-09-07): typed Telegram adapter and pairing on
+`build/telegram-messaging`, exercised only through a scripted HTTP transport.
+New `src/kestrel/telegram.py`: four permitted methods, fixed HTTPS origin, no
+redirects or ambient proxy, bounded responses, strict wire records, credential
+file handling with full redaction, `KESTREL_TELEGRAM_ACTIVATED` activation gate,
+deep-link pairing with a stored nonce hash and local operator confirmation,
+credential rotation check, and a `TelegramTransport` for the delivery state
+machine. `tests/test_telegram.py` adds 47 cases. Official Bot API documentation
+rechecked 2026-09-07; assumptions recorded in `telegram.API_ASSUMPTIONS` with
+`live_integration_verified` false. Commands and results:
+`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`
+exit 0; `python3 tools/validate_pack.py` exit 0; `git diff --check` exit 0;
+`KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q`
+— 409 passed, 1 skipped (A28), 12 deselected, exit 0. Evidence:
+`/private/tmp/kestrel-telegram-messaging/core-t3.xml`.
+No bot exists, no credential was obtained, no request reached api.telegram.org,
+and no service, deployment or permission changed. Next action: T4's reviewable
+but inert deployment profile and operator runbook, then T5's durable poller and
+typed status/attention commands.
+
 Telegram messaging T2 (2026-09-07): approved-envelope delivery on
 `build/telegram-messaging`. New `src/kestrel/notifications.py` with operator-issued
 channels and service grants, template-driven disclosure with classification
