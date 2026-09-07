@@ -1,0 +1,12 @@
+# PREPARED FOR REVIEW ONLY. Not installed, not enabled, never executed.
+[Unit]
+Description=Run Kestrel messaging permit refresh on a bounded interval
+
+[Timer]
+OnBootSec=60s
+OnUnitInactiveSec=5s
+AccuracySec=5s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -187,6 +187,14 @@ def messaging_command(args) -> dict:
         if args.action == "export":
             return {**Exporter(assistant).export_pending(),
                     "authority": "renders approved envelopes; no transport is contacted"}
+        if args.action == "permits":
+            exporter = Exporter(assistant)
+            if args.target == "refresh":
+                return {**exporter.refresh_permits(),
+                        "authority": "re-issues short-lived release permits; it never "
+                                     "resets intent age, retry count or channel quota"}
+            return {"permits": sorted(path.name for path in exporter.permits.glob("*.json")),
+                    "authority": "local read only"}
         if args.action == "delivery":
             with Gateway(args.messaging_root, owner="cli") as gateway:
                 if args.target == "list":
@@ -361,6 +369,9 @@ def parser() -> argparse.ArgumentParser:
     grant.add_parser("show")
     export = notify.add_parser("export")
     export.add_argument("--once", action="store_true", required=True)
+    permits = notify.add_parser("permits").add_subparsers(dest="target", required=True)
+    permits.add_parser("refresh")
+    permits.add_parser("show")
     delivery = notify.add_parser("delivery").add_subparsers(dest="target", required=True)
     delivery.add_parser("list")
     delivery.add_parser("inspect").add_argument("envelope")

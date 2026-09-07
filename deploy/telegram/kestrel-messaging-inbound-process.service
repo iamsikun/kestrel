@@ -1,0 +1,50 @@
+# PREPARED FOR REVIEW ONLY. Not installed, not enabled, never executed.
+[Unit]
+Description=Kestrel messaging inbound command processing
+Documentation=file:///opt/kestrel/docs/MESSAGING_OPERATIONS.md
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=kestrel-lab
+Group=kestrel-msg
+Environment=MESSAGING_ROOT=/srv/kestrel/messaging
+ExecStart=/opt/kestrel/bin/kestrel --messaging-root ${MESSAGING_ROOT} notify inbound process --once
+
+# The authority side must never make a network call.
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @debug @obsolete
+UMask=0027
+
+ReadWritePaths=/srv/kestrel/messaging/assistant-private
+ReadWritePaths=/srv/kestrel/messaging/notification-export
+ReadOnlyPaths=/srv/kestrel/lab
+# The untrusted inbound journal is marked processed here, so it is writable.
+ReadWritePaths=/srv/kestrel/messaging/telegram-runtime
+InaccessiblePaths=/srv/kestrel/messaging/telegram-secrets
+
+MemoryMax=128M
+MemoryHigh=96M
+TasksMax=32
+TimeoutStartSec=120

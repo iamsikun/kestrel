@@ -379,3 +379,30 @@ remain unauthorized and undone.
 - The command table contains no approve, run, cancel, budget or policy verb.
   Replies are rendered from typed fields through fixed templates; inbound text
   is never echoed back as structure.
+
+## 2026-09-07 — Telegram messaging T4 (prepared, explicitly not activated)
+
+- `deploy/telegram/` holds systemd units, a file ownership and permission
+  matrix, and an operator-facing README. Nothing there is installed, enabled or
+  executed: it was written on macOS and has never run on any host. The measured
+  cross-identity denials it is meant to produce are listed as commands that were
+  not run, so messaging acceptance conditions N-A05 and N-A12 stay unpassed.
+- Two principals, both driven by oneshot units and timers rather than a bespoke
+  daemon loop, so there is no untested long-running process to review. The local
+  sender lease still prevents overlapping senders.
+- `PrivateNetwork=yes` on the authority units is the one strong, easily verified
+  restriction: the projector cannot make a network call at all.
+- Gateway egress restriction is deliberately left unsolved rather than faked.
+  `api.telegram.org` has no stable addresses, so the units deny all addresses and
+  leave the allowlist empty and commented. A real deployment needs an egress
+  proxy, a maintained firewall rule, or a namespace whose only route is such a
+  proxy; a Python-side host check does not contain a compromised gateway.
+- Live Telegram activity is gated on `KESTREL_TELEGRAM_ACTIVATED`. It is not a
+  development switch: the entire offline release works without it, and nothing
+  in the codebase or the test suite sets it.
+- `tests/test_telegram_live.py` is marked `live`, requires four explicit
+  environment inputs, sends at most one public-synthetic message, and has never
+  been run. It is collected and skipped by the ordinary core command so the
+  unsatisfied gate stays visible rather than being deselected out of sight. It
+  carries no messaging acceptance marker, so a skip cannot be mistaken for
+  coverage of the live half of N-A19.

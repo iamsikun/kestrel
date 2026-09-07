@@ -87,6 +87,34 @@ outputs remain diagnostics, separate from successful observations. Cache reuse
 is not an independent replicate. These are finite synthetic checks, not general
 scientific inference or proof of security.
 
+## Messaging and briefings
+
+Implemented offline: read-only briefings, a durable assistant inbox with
+projection and schedules, approved-envelope delivery over an offline transport,
+a typed Telegram adapter and pairing workflow exercised through fake HTTP, and a
+durable inbound poller with a limited command vocabulary. No bot, credential,
+message, host service, deployment or permission exists. See
+[MESSAGING_OPERATIONS.md](MESSAGING_OPERATIONS.md) for the full command list,
+the activation gate, and the operator steps for a first authorized synthetic
+Telegram test.
+
+```sh
+kestrel --lab /absolute/external/lab brief --format markdown
+kestrel --messaging-root /absolute/external/messaging --lab /absolute/external/lab notify init
+kestrel --messaging-root /absolute/external/messaging notify reconcile --once
+kestrel --messaging-root /absolute/external/messaging inbox list
+kestrel --messaging-root /absolute/external/messaging notify export --once
+kestrel --messaging-root /absolute/external/messaging notify gateway dispatch --transport fake
+```
+
+`brief` opens read-only source connections and never constructs a writable lab.
+Messaging state lives in its own external root, outside both the lab and this
+checkout. Every messaging command reports the authority it exercises. Anything
+that would reach `api.telegram.org` fails closed unless an authorized operator
+sets `KESTREL_TELEGRAM_ACTIVATED=1`; nothing in the codebase or the test suite
+sets it. `tests/test_telegram_live.py` is marked `live` and skips by default; a
+skip is an unsatisfied gate, not a pass.
+
 ## Reproduce verification
 
 Development setup can contact the package registry. Tests and campaigns use no
