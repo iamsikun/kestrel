@@ -4,7 +4,11 @@ Tested revision: `52a2d685ad8a74ad299ee4b35e4f67bb048fbfde` on
 `build/telegram-messaging`, branched from the planning branch tip `b944687`
 (which carries one unrelated local installation note above the planning commit
 `28ec895`; that work is preserved, not dropped). The working tree was clean when
-these suites ran. Verification completed 2026-09-07 local time.
+these suites ran. Verification completed 2026-09-07 local time. Commits after
+this revision change documentation only and no runtime, test, specification or
+packaging file; confirm with
+`git diff --name-only 52a2d68..HEAD -- src tests specs pyproject.toml tools`,
+which must be empty.
 
 No bot was created, no credential was obtained, no message was sent, no host
 service was installed, no controller was deployed, no live provider was enabled,
