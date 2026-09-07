@@ -76,3 +76,9 @@
 - A blocked branch leaves the campaign pending while independently ready work
   finishes. Resuming it preserves the completed attempt and existing approval;
   missing work does not become a failed scientific finding.
+- Cancelling a finite offline reader must remain possible when its plan is
+  malformed, invalidated or unavailable. The controller confirms the reader lock
+  is held exclusively and records a separate cancellation occurrence using frozen
+  claimed identities and available classification metadata. It does not parse
+  the plan or claim its contents were verified. That operational stop record does
+  not restore scientific validity or make missing evidence exportable.

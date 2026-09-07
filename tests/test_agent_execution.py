@@ -15,7 +15,8 @@ def historical_task():
                      max_calls=0, max_tokens=0, data_classification="public_synthetic")
 
 
-def prepare(lab, payload=None, *, backend="normalized_replay", campaign_budget=1, task_budget=1):
+def prepare(lab, payload=None, *, backend="normalized_replay", campaign_budget=1, task_budget=1,
+            malformed_plan=False, classification="public_synthetic"):
     parents = []
     if payload is None:
         plan = AgentPlan()
@@ -24,13 +25,15 @@ def prepare(lab, payload=None, *, backend="normalized_replay", campaign_budget=1
         parents.append(raw["digest"])
         plan = AgentPlan(backend=backend, recording=raw["digest"], recorded_task=historical_task(),
                          provider_version="kestrel-mock-v1" if backend == "normalized_replay" else "synthetic-fixture")
-    artifact = lab._put(plan, producer="controller:agent-plan", lineage=parents)
+    artifact = lab.store.put_bytes(b"{" if malformed_plan else canonical(plan),
+                                   producer="controller:agent-plan", lineage=parents, classification=classification)
     contract = {"budget": {"attempts": campaign_budget, "runtime_seconds": campaign_budget,
                             "provider_calls": 0, "tokens": 0},
                 "controls": {"agent_plan": artifact["digest"]}, "profile": "development",
                 "capabilities": ["offline_agent", "execute"], "data_classification": "public_synthetic"}
     campaign = lab.controller.propose(contract)
-    lab._put(contract, producer=f"contract:{campaign}", lineage=[artifact["digest"]])
+    lab.store.put_bytes(canonical(contract), producer=f"contract:{campaign}",
+                        lineage=[artifact["digest"]], classification=classification)
     task = TaskSpec(id=f"agent-{campaign}", campaign_id=campaign, recipe=artifact["digest"],
                     operation="offline_agent", profile="development", resources={"cpu": 1},
                     budget={"runtime_seconds": task_budget, "provider_calls": 0, "tokens": 0})
@@ -233,3 +236,71 @@ def test_replayed_capture_remains_in_export_and_invalidation_lineage(tmp_path):
             with_artifacts.close()
         lab.store.invalidate(raw_id, "Synthetic capture provenance revoked")
         assert lab.store.get(receipt_id)["status"] != "valid"
+
+
+@pytest.mark.acceptance("A29")
+@pytest.mark.parametrize("condition", ["malformed", "invalidated", "deleted", "tampered", "restricted"])
+def test_cancellation_does_not_require_readable_or_valid_plan(tmp_path, monkeypatch, condition):
+    with Lab.initialize(tmp_path / "lab") as lab:
+        campaign, task, approval = prepare(lab, malformed_plan=condition == "malformed",
+                                           classification="restricted" if condition == "restricted" else "public_synthetic")
+        attempt = reserve(lab, task, approval)
+        identity = lab.controller.task(task)["spec"]["recipe"]
+        if condition == "invalidated":
+            lab.store.invalidate(identity, "Synthetic plan invalidation")
+        elif condition == "deleted":
+            lab.store.db.execute("UPDATE artifacts SET status='deleted' WHERE digest=?", (identity,))
+            lab.store.db.commit()
+        elif condition == "tampered":
+            path = lab.store.objects / identity
+            path.chmod(0o600)
+            path.write_bytes(b"tampered synthetic input")
+        monkeypatch.setattr(MockAgent, "run", lambda *_: pytest.fail("Invalid plan cannot invoke agent"))
+        with pytest.raises(ValueError):
+            lab.agents.run(attempt["id"])
+        assert lab.controller.attempt(attempt["id"])["resources_held"]
+        # Cancellation must not read even a well-formed plan or contract. Its
+        # classification decision uses persisted metadata and defaults closed.
+        with monkeypatch.context() as cancelling:
+            cancelling.setattr(lab.store, "read", lambda *_: pytest.fail("Cancellation read unavailable plan bytes"))
+            current = lab.agents.cancel(attempt["id"])
+        assert current["state"] == "CANCELLED" and current["stopped_confirmed"]
+        assert not current["resources_held"]
+        assert lab.controller.budget_used(campaign)["attempts"] == 1
+        record = lab.store.get(current["diagnostic"]["execution"])
+        assert record["assurance"] == "traceable"
+        assert record["classification"] == ("restricted" if condition == "restricted" else "public_synthetic")
+        receipt = parse_json(lab.store.read(record["digest"]))
+        assert receipt["input_content_verified"] is False
+        assert receipt["plan"] == identity
+
+
+@pytest.mark.acceptance("A29")
+def test_invalid_plan_cancellation_receipt_recovers_without_reinvocation(tmp_path, monkeypatch):
+    with Lab.initialize(tmp_path / "lab") as lab:
+        campaign, task, approval = prepare(lab, malformed_plan=True)
+        attempt = reserve(lab, task, approval)
+        with monkeypatch.context() as interrupted:
+            def stop(*_args, **_kwargs):
+                raise SystemExit("Interrupted after durable cancellation receipt")
+            interrupted.setattr(lab.agents, "_finalize", stop)
+            with pytest.raises(SystemExit):
+                lab.agents.cancel(attempt["id"])
+    with Lab(tmp_path / "lab") as lab:
+        monkeypatch.setattr(MockAgent, "run", lambda *_: pytest.fail("Cancellation recovery invoked mock"))
+        lab.agents.execute_ready(campaign, approval)
+        assert lab.controller.attempt(attempt["id"])["state"] == "CANCELLED"
+        assert lab.controller.resources_used()["cpu"] == 0
+
+
+@pytest.mark.acceptance("A29")
+def test_offline_cancellation_cannot_certify_another_backend_stopped(tmp_path):
+    with Lab.initialize(tmp_path / "lab") as lab:
+        _, task, approval = prepare(lab)
+        attempt = lab.controller.reserve(task, approval_id=approval, principal="developer",
+                                         backend="development", available_capabilities=["development"])
+        with pytest.raises(AuthorityError):
+            lab.agents.cancel(attempt["id"])
+        current = lab.controller.attempt(attempt["id"])
+        assert current["state"] == "STARTING" and current["resources_held"]
+        assert not current["stopped_confirmed"]

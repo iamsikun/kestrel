@@ -18,7 +18,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from kestrel.agents import AgentResult, AgentTask, MockAgent, Proposal, ReplayAgent, validate_result
-from kestrel.artifacts import Artifacts, _safe_read
+from kestrel.artifacts import ArtifactError, Artifacts, _safe_read
 from kestrel.contracts import Digest, StrictModel, canonical, digest, parse_json
 from kestrel.controller import TERMINAL, AuthorityError, Controller, StateError
 from kestrel.provider_records import read_claude, read_codex
@@ -64,6 +64,12 @@ class AgentReceipt(StrictModel):
     elapsed_seconds: float = Field(ge=0)
     status: Literal["completed", "quota", "malformed", "timeout", "refused", "cancelled", "error", "interrupted"]
     error: str | None = Field(max_length=2048)
+
+
+class CancelReceipt(StrictModel):
+    attempt_id: str
+    plan: Digest
+    cancelled_without_plan: Literal[True]
 
 
 class OfflineAgents:
@@ -147,6 +153,8 @@ class OfflineAgents:
         return validate_result(task, canonical(result)), payload
 
     def _finalize(self, attempt: dict, receipt: dict) -> dict:
+        if receipt.get("cancelled_without_plan") is True:
+            return self._finalize_cancellation(attempt, receipt)
         receipt = AgentReceipt.model_validate(receipt).model_dump(mode="json")
         if receipt["attempt_id"] != attempt["id"]:
             raise ValueError("Agent receipt belongs to another attempt")
@@ -187,6 +195,50 @@ class OfflineAgents:
             self.controller.record_diagnostic(attempt["id"], record, fence=attempt["fence"])
             state = "CANCELLED" if receipt["status"] == "cancelled" else "FAILED"
         return self.controller.transition(attempt["id"], state, fence=attempt["fence"])
+
+    def _finalize_cancellation(self, attempt: dict, receipt: dict) -> dict:
+        """Release a stopped reader without parsing invalidated input content."""
+        receipt = CancelReceipt.model_validate(receipt).model_dump(mode="json")
+        spec = self.controller.task(attempt["task_id"])["spec"]
+        if (receipt["attempt_id"] != attempt["id"] or receipt["plan"] != spec["recipe"]
+                or attempt["backend"] != "offline-agent" or spec["operation"] != "offline_agent"):
+            raise AuthorityError("Cancellation receipt does not match the reserved offline task")
+        attempt = self.controller.reconcile(attempt["id"], lambda label: {
+            "backend_label": label, "status": "stopped", "proof": "exclusive-offline-reader-lock"
+        })
+        if attempt["state"] in TERMINAL:
+            return attempt
+        if attempt["state"] != "VERIFYING":
+            attempt = self.controller.transition(attempt["id"], "VERIFYING", fence=attempt["fence"])
+        if attempt["diagnostic"] is None:
+            inputs = [self.controller.campaign(attempt["campaign_id"])["digest"], receipt["plan"]]
+            input_metadata = []
+            classification = "public_synthetic"
+            for identity in inputs:
+                try:
+                    record = self.store.get(identity)
+                    if record["classification"] == "restricted":
+                        classification = "restricted"
+                    input_metadata.append({"digest": identity, "recorded_status": record["status"]})
+                except ArtifactError:
+                    # No metadata is a reason to reduce sharing, never to infer
+                    # that missing input content was public or valid.
+                    classification = "restricted"
+                    input_metadata.append({"digest": identity, "recorded_status": "unavailable"})
+            # These are claimed frozen identities in a cancellation diagnostic,
+            # not verified input-content edges. Even historical artifact edges
+            # require readable content; cancellation cannot depend on that.
+            artifact = self.store.put_bytes(canonical({**receipt, "input_metadata": input_metadata,
+                                                        "input_content_verified": False,
+                                                        "status": "cancelled", "invoked_during_cancellation": False}),
+                                            producer=f"agent-cancellation:{attempt['id']}",
+                                            media_type="application/json", classification=classification,
+                                            historical=True)
+            self.controller.record_diagnostic(attempt["id"], {
+                "kind": "offline_agent", "execution": artifact["digest"], "status": "cancelled",
+                "agent_output": None, "usage": {"provider_calls": 0, "tokens": 0}, "elapsed_seconds": 0.0,
+            }, fence=attempt["fence"])
+        return self.controller.transition(attempt["id"], "CANCELLED", fence=attempt["fence"])
 
     def run(self, attempt_id: str) -> dict:
         with self._lock(attempt_id):
@@ -229,11 +281,8 @@ class OfflineAgents:
             attempt = self.controller.attempt(attempt_id)
             if attempt["state"] in TERMINAL:
                 return attempt
-            plan, _, identity = self._plan(attempt)
-            receipt = {"attempt_id": attempt_id, "plan": identity, "output": None,
-                       "input_recording": plan.recording,
-                       "usage": {"provider_calls": 0, "tokens": 0}, "elapsed_seconds": 0.0,
-                       "status": "cancelled", "error": "Cancelled before offline output publication"}
+            spec = self.controller.task(attempt["task_id"])["spec"]
+            receipt = {"attempt_id": attempt_id, "plan": spec["recipe"], "cancelled_without_plan": True}
             self._write(attempt_id, receipt)
             return self._finalize(attempt, receipt)
 
