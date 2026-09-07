@@ -362,6 +362,19 @@ class LabSources:
             self.controller.close()
             raise
 
+    def disclosure_classifications(self) -> list[str]:
+        """Conservative lab-wide ceiling, including evidence without a campaign.
+
+        Empty synthetic state is public_synthetic; missing or unknown labels are
+        restricted. This does not infer a downgrade from a short/aggregate view.
+        """
+        labels = [self.controller.campaign(identity)["contract"].get("data_classification")
+                  for identity in self.controller.campaign_ids()]
+        labels.extend(row[0] for row in self.evidence._rows(
+            "SELECT DISTINCT classification FROM artifacts"))
+        return sorted({value if value in ("public_synthetic", "public", "restricted")
+                       else "restricted" for value in labels} or {"public_synthetic"})
+
     def cutoffs(self) -> dict[str, Any]:
         """The per-feed cutoff vector. There is no global snapshot transaction."""
         return {"controller": {"source": self.controller.fingerprint(),

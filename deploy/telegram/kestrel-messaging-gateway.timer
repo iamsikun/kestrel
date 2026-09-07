@@ -1,0 +1,12 @@
+# PREPARED FOR REVIEW ONLY. Not installed, not enabled, never executed.
+[Unit]
+Description=Run the Kestrel Telegram gateway on a bounded interval
+
+[Timer]
+OnBootSec=90s
+OnUnitInactiveSec=10s
+AccuracySec=2s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

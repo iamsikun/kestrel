@@ -1,5 +1,33 @@
 # Implementation decisions
 
+## 2026-09-07 — Telegram audit repairs
+
+- Research-derived notifications conservatively inherit classifications from the
+  whole lab, including artifacts without a campaign. This may suppress a public
+  campaign's message when unrelated restricted material exists. Narrower source
+  attribution needs separate implementation and tests; no metadata exception is
+  inferred. Only fixed help/stop/resume replies are independent of research data.
+  Missing renderer provenance fails closed, including renewal of legacy envelopes.
+- Transport briefs omit the lab path; full local records retain it and release
+  scanning remains unchanged. Daily scheduling still requires the documented
+  explicit local schedule-setting step.
+- Gateway CLI paths use only approved export records and their journal. Routing
+  exports confirmed bot/chat/user numeric identities and the epoch. Export files
+  use 0640; shared SQLite/lock files use 0660. Deployment supplies ownership and
+  setgid groups; code does not change host users or expand gateway private access.
+- Unique sender ownership, an OS file lock and conditional database claims
+  exclude local overlapping sends, even after lease expiry. The lock is not a
+  Telegram request fence. Ambiguous sends remain ineligible for automatic retry.
+- Pacing defers queued messages instead of sleeping: attempts start at least one
+  second apart. A rolling 60-second reply count survives restarts. Combined
+  automated quotas include critical attempts in either arrival order. The storm
+  test now advances synthetic time while preserving its daily-cap assertions;
+  the unknown-template test supplies valid provenance to reach its intended check.
+- Permit renewal requires fresh bound projections caught up to source heads.
+  Grant, intent and projection deadlines all bound permit expiry. Dispatch reads
+  time/policy per candidate. Failed inbound persistence holds the batch cursor;
+  only a durably existing identity qualifies as a replay.
+
 ## 2026-09-07 — make the root README a current user entry point
 
 - The user's request for usable README instructions supersedes the earlier choice
@@ -249,6 +277,176 @@ remain unauthorized and undone.
   property. The pinned first-pilot inventory, its manifest and `validate_pack`
   are unchanged; an unknown ID under the pinned `acceptance` property would
   otherwise become a release-gate integrity diagnostic.
+
+## 2026-09-07 — Telegram messaging T1 (durable assistant state)
+
+- The assistant owns a separately migrated database in its own external
+  directory. Messaging state is never placed inside the lab or the framework
+  checkout, and the four ownership domains (assistant-private,
+  notification-export, telegram-runtime, telegram-secrets) are created as
+  distinct directories so a deployment can assign them distinct identities.
+  Creating them installs no service and provisions no credential.
+- Projection recomputes current conditions from source state and diffs them
+  against recorded revisions, rather than replaying an event stream into item
+  mutations. Replay is therefore idempotent by construction, clock-derived
+  conditions (approval expiry, held capacity, expired leases) need no source
+  event, and resolution is always read back from the source rather than
+  inferred from an acknowledgement.
+- Source identity binds to the first append-only controller event. A replaced,
+  restored or truncated ledger produces a `source_continuity` gap that pauses
+  projection until an operator runs an explicit rebind, which opens a new epoch
+  and retains the historical inbox. Continuity is never inferred from a path or
+  a file modification time.
+- The first projection backfills the inbox and emits exactly one summary intent.
+  Historical events are not replayed as notifications.
+- A milestone is a finite conjunction of typed predicates over explicit campaign
+  IDs, evaluated through the shared verified report. There is no expression, SQL
+  or "queue empty" form, an unreached milestone is never announced, an
+  invalidation reopens a reached one, and each definition change is a new
+  immutable version.
+- Schedules persist the IANA zone, intended local date, preference version and
+  next due instant. A skipped local time resolves to the next instant that
+  actually exists, found by bisecting the offset change; an ambiguous local time
+  uses its first occurrence; a run that spans missed days emits one catch-up
+  occurrence rather than a week of mornings; and a clock rollback cannot repeat a
+  delivered occurrence.
+- Quiet hours defer release rather than suppress an item, with no automatic
+  overnight bypass. Only conditions the operator lists explicitly may interrupt.
+- Route is part of item identity, so promoting a completion from digest to timely
+  by adding a watch resolves the digest item and opens a distinct watched one
+  instead of silently rewriting a recorded revision.
+
+## 2026-09-07 — Telegram messaging T2 (approved envelopes and delivery)
+
+- Notification authority is a separate messaging operator credential provisioned
+  by `notify init`, distinct from the lab's campaign operator token. A campaign
+  approval capability string can never create a notification grant, and a grant
+  confers no `execute`, `network`, `live_provider`, publication or budget
+  authority. This demonstrates service-grant policy in a developer lab; it is
+  not a deployed service identity boundary.
+- The gateway receives an export directory, its own journal and a transport
+  credential. It is never handed a controller or evidence database, an artifact,
+  a project workspace, or an operator token. That separation is enforced by what
+  the process is given, not yet by an operating system; the measured denial
+  remains an unpassed deployment gate.
+- Rendering is template-driven over allowlisted scalar fields. A release scanner
+  for paths, URLs, credential words and secret-shaped strings is defence in
+  depth, not a licence for free text. Clipping preserves the caveat tail and
+  never orphans a combining mark.
+- A view inherits the classification of every contributing source. Identifiers,
+  digests and a bare "there is an update" are still disclosure, so an
+  above-ceiling item is refused entirely and a metadata-only fallback needs its
+  own explicit permission, which is off by default.
+- Export is replayable: the intent is committed first, the envelope is written
+  to a bounded temporary file, verified, then published atomically under a
+  stable name. A crash before publication leaves an intent to export; a crash
+  after it cannot create a second logical notification.
+- `SENDING` is committed before the transport call, so a crash from that point
+  is an unknown outcome. Ambiguity never triggers an automatic resend, a local
+  lease is explicitly not a fence at the provider, and a takeover marks an
+  in-flight send `UNCERTAIN` rather than retrying it. Independent fresh items
+  continue while an ambiguous one waits.
+- Release permits expire in 60 seconds and are the declared bound on revocation
+  propagation for an envelope that has not been transmitted. Refreshing one
+  never resets intent age, retry count or channel quota. Unavailable policy is
+  not permission: the gateway fails closed.
+- Caps count retries and summaries. Reaching one queues the item until its
+  expiry or the next window; there is no uncapped overflow message. Spool
+  saturation pauses export and keeps the unresolved item with a reason code.
+- Delivery tests live in `tests/test_notifications.py` rather than being folded
+  into `tests/test_messaging.py`; the plan's file list is a guide and one file
+  per module keeps the delivery state machine and its adversarial cases legible.
+
+## 2026-09-07 — Telegram messaging T3 (adapter and pairing, offline)
+
+- The adapter is standard library only behind an injectable HTTP seam. No bot
+  framework, webhook server or new runtime dependency was added. Official Bot API
+  documentation was rechecked on 2026-09-07 and the exact behaviours the adapter
+  relies on are recorded in `telegram.API_ASSUMPTIONS`, with
+  `API_DOCUMENTATION["live_integration_verified"] = False`. Passing these tests
+  is not a verified live integration and pins nothing about a hosted service.
+- Exactly four methods are reachable: `getMe`, `getWebhookInfo`, `sendMessage`
+  and `getUpdates`. A method name, URL, recipient or body can never originate
+  from a worker, an assistant item or an inbound message. The origin is fixed,
+  redirects are refused, ambient proxy configuration is ignored, and responses
+  are bounded, duplicate-key checked and mapped into strict records that ignore
+  additive fields while refusing unknown critical shapes.
+- The token is read from a mode-0600 operator file, is never a command-line
+  argument, and is scrubbed from every exception, repr and log record. Logs
+  carry only a method name, a status category, a bounded duration, an opaque
+  channel label and a local attempt id.
+- Live operations fail closed behind `KESTREL_TELEGRAM_ACTIVATED`. This is an
+  activation gate, not a development switch: every offline path works without
+  it and nothing in the codebase sets it.
+- Pairing refuses to proceed when another integration owns the bot's webhook,
+  and never deletes a webhook or discards pending updates. Only the hash of a
+  128-bit nonce is stored, the deep link stays inside the documented parameter
+  format, and an identified chat is only a candidate: a local confirmation with
+  the messaging operator credential is what binds the channel and grant.
+- A misaddressed envelope is refused by the transport as a definitive rejection
+  rather than an ambiguous outcome, because nothing was transmitted and a retry
+  could not help. A failure known to precede transmission retries; anything that
+  may have been transmitted stays uncertain.
+
+## 2026-09-07 — Telegram messaging T5 (inbound polling and typed replies)
+
+- An update is durably journaled, as a normalized record or as a rejection
+  tombstone, before the polling offset advances, because advancing the offset is
+  what confirms receipt upstream. A full journal deliberately holds the offset
+  and raises a gap instead of acknowledging bytes that were not accounted for.
+- A numeric gap in update identifiers never implies a lost message: filtering
+  and Telegram's documented idle reset both produce gaps. After the documented
+  idle interval, or on a change of bot identity or enrollment epoch, the poller
+  enters an explicit rebase mode, polls without the old high offset, treats
+  already-journaled identifiers as duplicates, and persists a new cursor.
+  Negative offsets and destructive queue dropping are never used.
+- Being offline longer than the documented 24-hour retention window opens a
+  `possible_inbound_loss` gap. The assistant reports that replies may have been
+  lost rather than assuming the operator did not answer.
+- Every accepted command is bound to both the registered user ID and the
+  registered private chat ID, only ordinary message updates are accepted, and
+  attention mutations additionally require a 15-minute freshness window. A read
+  request may still be answered, because a fresh status request should retrieve
+  current state.
+- A command's effect, its reply intent and its processed request identity commit
+  in one assistant transaction, keyed by bot identity, epoch and update id. A
+  restart between the journal, the commit and delivery neither loses a committed
+  command nor applies it twice. Whether the answer reached the operator remains
+  uncertain.
+- An item reference binds both the stable item and its exact revision. A stale
+  or malformed reference is refused with a request to refresh the inbox; it can
+  never acknowledge newly worsened evidence. Unsupported prose receives one
+  bounded help response inside the reply budget.
+- The command table contains no approve, run, cancel, budget or policy verb.
+  Replies are rendered from typed fields through fixed templates; inbound text
+  is never echoed back as structure.
+
+## 2026-09-07 — Telegram messaging T4 (prepared, explicitly not activated)
+
+- `deploy/telegram/` holds systemd units, a file ownership and permission
+  matrix, and an operator-facing README. Nothing there is installed, enabled or
+  executed: it was written on macOS and has never run on any host. The measured
+  cross-identity denials it is meant to produce are listed as commands that were
+  not run, so messaging acceptance conditions N-A05 and N-A12D stay unpassed.
+- Two principals, both driven by oneshot units and timers rather than a bespoke
+  daemon loop, so there is no untested long-running process to review. The local
+  sender lease still prevents overlapping senders.
+- `PrivateNetwork=yes` on the authority units is the one strong, easily verified
+  restriction: the projector cannot make a network call at all.
+- Gateway egress restriction is deliberately left unsolved rather than faked.
+  `api.telegram.org` has no stable addresses, so the units deny all addresses and
+  leave the allowlist empty and commented. A real deployment needs an egress
+  proxy, a maintained firewall rule, or a namespace whose only route is such a
+  proxy; a Python-side host check does not contain a compromised gateway.
+- Live Telegram activity is gated on `KESTREL_TELEGRAM_ACTIVATED`. It is not a
+  development switch: the entire offline release works without it, and nothing
+  in the codebase or the test suite sets it.
+- `tests/test_telegram_live.py` is marked `live`, requires four explicit
+  environment inputs, sends at most one public-synthetic message, and has never
+  been run. It is collected and skipped by the ordinary core command so the
+  unsatisfied gate stays visible rather than being deselected out of sight. It
+  carries no messaging acceptance marker, so a skip cannot be mistaken for
+  coverage of the live half of N-A19.
 
 ## 2026-09-07 — existing-project integration
 

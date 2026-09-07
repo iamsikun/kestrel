@@ -1,5 +1,14 @@
 # Telegram messaging implementation plan
 
+**Implementation status, 2026-09-07.** The operator subsequently authorized local
+implementation. T0, T1, T2, T3 and T5's offline functionality are implemented and
+tested on `build/telegram-messaging`; T4 is prepared as inert review material in
+`deploy/telegram/`. See [MESSAGING_OPERATIONS.md](../MESSAGING_OPERATIONS.md) and
+[MESSAGING_VERIFICATION.md](../MESSAGING_VERIFICATION.md). The "planning only"
+status below is the historical record of when this plan was written. No bot,
+credential, sent message, host service, deployment or permission change exists,
+and the activation gates in section 10 remain in force.
+
 **Status: planning only, 2026-09-07.** The operator selected Telegram as Kestrel's
 first external messaging channel and explicitly requested no implementation yet.
 No code, tests, dependencies, credentials, bot, schedule, or service are created by

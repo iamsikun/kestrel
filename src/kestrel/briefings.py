@@ -363,13 +363,14 @@ def render_markdown(record: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_plain(record: dict[str, Any]) -> str:
+def render_plain(record: dict[str, Any], *, include_lab: bool = True) -> str:
     """Short plain-text view. The full record stays in the local inbox."""
     sections = record["sections"]
     awaiting = len(sections["awaiting_you"])
     integrity = len(sections["integrity"])
     complete = len(sections["verified_outcomes"])
-    parts = [f"Kestrel briefing for {record['lab']}.",
+    parts = [(f"Kestrel briefing for {record['lab']}." if include_lab
+              else "Kestrel briefing."),
              f"Needs you: {awaiting}. Completed campaigns: {complete}. "
              f"Integrity items: {integrity}."]
     for item in sections["awaiting_you"][:3]:

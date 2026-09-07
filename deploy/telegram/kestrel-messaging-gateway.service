@@ -1,0 +1,61 @@
+# PREPARED FOR REVIEW ONLY. Not installed, not enabled, never executed.
+[Unit]
+Description=Kestrel Telegram gateway: intake and outbound dispatch
+Documentation=file:///opt/kestrel/docs/MESSAGING_OPERATIONS.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=kestrel-gateway
+Group=kestrel-msg
+Environment=MESSAGING_ROOT=/srv/kestrel/messaging
+# Set only under explicit operator authorization for live Telegram activity.
+Environment=KESTREL_TELEGRAM_ACTIVATED=1
+ExecStart=/opt/kestrel/bin/kestrel --messaging-root ${MESSAGING_ROOT} notify gateway intake
+ExecStart=/opt/kestrel/bin/kestrel --messaging-root ${MESSAGING_ROOT} notify gateway dispatch \
+    --transport telegram \
+    --credential-file /srv/kestrel/messaging/telegram-secrets/bot.token
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @debug @obsolete
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0027
+
+# The gateway sees the export directory read-only, its own journal, and its
+# credential. It is given no path into the lab or the assistant database.
+ReadOnlyPaths=/srv/kestrel/messaging/notification-export
+ReadOnlyPaths=/srv/kestrel/messaging/telegram-secrets
+ReadWritePaths=/srv/kestrel/messaging/telegram-runtime
+InaccessiblePaths=/srv/kestrel/lab
+InaccessiblePaths=/srv/kestrel/messaging/assistant-private
+
+# Egress restriction is NOT solved by these two lines. api.telegram.org does not
+# have stable addresses, so no honest allowlist can be written here. Route this
+# unit through an egress proxy or a maintained firewall rule and record the
+# measured denial before treating egress as restricted.
+IPAddressDeny=any
+# IPAddressAllow=<addresses of the operator's egress proxy>
+
+MemoryMax=128M
+MemoryHigh=96M
+TasksMax=32
+TimeoutStartSec=120
