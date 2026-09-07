@@ -245,7 +245,7 @@ These are assessment recommendations, not changes to the pinned acceptance rules
 | 2 | Actual agent-assisted research planning | One authorized, tested provider integration plus a human-plan input path; propose a new candidate under constraints instead of confirming a prewritten one |
 | 2 | Planning after results | A bounded decide/continue/replicate/stop/amend step, with reasons tied to evidence and a complete selection history |
 | 2 | Personal project coordination | List/search projects and campaigns, show blockers and pending approvals, and maintain a user-prioritized work queue across projects |
-| 2 | Daily operator interaction | Readable decision packets, an awaiting-input queue, and eventually authorized notifications or scheduled briefings; current output is command-driven JSON |
+| 2 | Daily operator interaction | Readable decision packets, an awaiting-input queue, and eventually authorized notifications or scheduled briefings; current output is command-driven JSON. See the [messaging proposal](proposals/MESSAGING.md) for the additional N0–N6 track |
 | 2 | Usable research memory | Connect existing permission checks to project notebooks containing hypotheses, assumptions, claims, counterevidence, and next actions; current retrieval is by known record ID |
 | 3 | Literature and citation workflows | Versioned source/passage records, retrieval provenance, and links from claims to evidence; no literature retrieval or synthesis implementation currently exists |
 | 3 | Richer scientific protocols | Domain-appropriate replications, uncertainty, negative controls, data splits, search budgets, and confirmation rules beyond the fixed finite comparison |

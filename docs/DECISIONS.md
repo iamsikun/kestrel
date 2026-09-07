@@ -156,3 +156,21 @@ this revision has an author who cannot also be its independent review.
   checks catch controller/application mistakes; they do not protect against a
   malicious controller, host administrator or forged test runner. Container
   configuration and all blocked deployment/provider/GPU gates are unchanged.
+
+## 2026-09-07 — messaging proposal consolidation (not implemented)
+
+- Consolidate the assistant product and architecture in
+  [proposals/MESSAGING.md](proposals/MESSAGING.md). Start with a deterministic local
+  brief, persistent awaiting-you queue, and scoped milestone subscriptions. This
+  is a proposed additional N0–N6 track, not a change to pinned pilot requirements.
+- Model notification authority as a service-scoped operator grant independent of
+  campaign execution approval. The proposed egress dispatcher receives approved
+  envelopes, never raw controller/evidence databases. Actual enforcement and live
+  delivery require separate authorized integration and deployment review.
+- Account for separate controller/evidence event streams, bounded projection
+  recovery, uncertain external sends, and explicit disclosure of even metadata.
+  Provider acceptance, operator acknowledgement, scientific review, and execution
+  approval are distinct. A freeze notification is not preregistration.
+- Remote approval remains optional and independent of useful conversational
+  assistance and literature discovery. No service, schedule, credential, runtime
+  permission, provider integration, or host configuration changed in this task.

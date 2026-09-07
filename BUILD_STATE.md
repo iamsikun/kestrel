@@ -1,5 +1,21 @@
 # Build state
 
+Messaging design consolidation (2026-09-07):
+[docs/proposals/MESSAGING.md](docs/proposals/MESSAGING.md) now covers assistant
+behaviors, source-aware projection/inbox, approved-envelope delivery, attention
+and authorization boundaries, researched transport candidates, and proposed N0–N6
+increments with 20 acceptance conditions. Proposal only; no runtime or pinned
+specification changes. Consequential assumptions are in docs/DECISIONS.md.
+Proposal SHA256: `b56721a3bc252f4b6bf1519f6dc91ceea7224ef13f84a7d1680c771901d31912`.
+Check receipt and retained original draft: `/private/tmp/kestrel-messaging-review/`.
+Pack integrity, Ruff, local document links and whitespace checks: exit 0.
+Runtime unit/integration/state-machine/adversarial, install, isolation, live
+transport, and deployment gates were not run for this documentation-only task;
+prior evidence and blockers below remain unchanged. Temporary evidence may be
+cleaned by the OS. Next unblocked messaging action: implement N0 deterministic
+local briefing from verified records with synthetic offline tests. This proposal
+does not authorize remote delivery, host service setup, or deployment.
+
 Repository orientation (2026-09-07): [docs/REPOSITORY_GUIDE.md](docs/REPOSITORY_GUIDE.md)
 maps the implemented modules, external lab layout, campaign flow, and personal-assistant
 product gaps. Linked from USAGE; no runtime, original specification, or acceptance
