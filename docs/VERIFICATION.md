@@ -1,12 +1,12 @@
 # Verification of the first pilot
 
-The tested implementation revision is `7db8a6cb81c6805373889424c23151b58b63997b`
-on `build/first-pilot`, which adds independent audit repairs on top of the previously
-verified `2157914e776b42112e00ec3a760eec7fc024022a`. Verification completed on
+The tested implementation revision is `ac9879e9a7725558468112f9f3950c687cf0a84d`
+on `build/first-pilot`. Follow-up repairs `bbc40cd` and `ac9879e` address remaining
+issues in auditor-authored `7db8a6c`; see [REVIEW_FOLLOWUP.md](REVIEW_FOLLOWUP.md). Verification completed on
 2026-09-07 local time (2026-09-07 UTC). Subsequent documentation commits do not change
 this tested code. The implementation is functional, but the complete acceptance gate
-remains blocked, and this revision has no independent review because its own auditor
-wrote the repairs.
+remains blocked, and the new repairs still require a separate independent review before deployment
+because this reviewer wrote them.
 No deployment, publication, private research access, live provider call, cloud job,
 or host-service/driver modification was performed.
 
@@ -19,23 +19,28 @@ requests after setup; isolated egress checks used local test endpoints.
 
 | Check | Result | Exit status |
 |---|---|---|
-| Core unit, integration, adversarial and Hypothesis state-machine suite | 238 passed, 1 skipped, 12 deselected | 0 |
+| Core unit, integration, adversarial and Hypothesis state-machine suite | 249 passed, 1 skipped, 12 deselected | 0 |
 | Fresh external offline wheel install and installed CLI demo | 1 passed | 0 |
 | Actual Docker Linux VM isolation suite | 11 passed, 19 deselected | 0 |
+| Retained external audit probes against an exact source archive | 83 passed | 0 |
 | Ruff | Passed | 0 |
 | Original specification integrity | 20 files, 46 requirements unchanged | 0 |
 | Offline source distribution and wheel build | Passed | 0 |
 | Release-gate report | 42 requirements passed, 4 blocked | 1, expected |
 
-The eight tests added since `2157914` are independent-audit regressions mapped to A27,
-A29, A40 and A45; they cover the completion invariants, report attribution, cross-project
-memory scope and provider labelling described below. No requirement mapping was removed.
+The follow-up adds eleven regression cases beyond the prior 238 core passes.
+They test evidence resolution and outcome consistency, amendment execution and
+cancellation, partial valid/inconclusive outcomes, offline receipt identity and
+truthful memory authorization logging. Claude's five retained audit test files
+were copied unchanged and run against an archive of this exact revision; their
+hashes are retained. No requirement mapping or acceptance assertion was removed.
 
 The core skip is A28: actual sanitized Codex and Claude captures are unavailable.
 The 12 deselections in the core command are the separately executed install and
 isolation tests; they are not skipped deployment evidence. The isolation command
 selects 11 container tests and deselects 19 already covered development tests.
-Core duration was 16.33 seconds; install 2.41 seconds; isolation 17.64 seconds.
+Core duration was 19.77 seconds; install 2.70 seconds; isolation 17.81 seconds;
+the retained audit suite took 9.58 seconds.
 Afterward, `docker container ls -a --filter label=kestrel.attempt` returned no
 remaining test containers (exit 0).
 
@@ -70,13 +75,15 @@ are retained in `install-evidence.json`.
 The exact final suite commands used these environment values:
 
 ```sh
-export KESTREL_SOURCE_REVISION=7db8a6cb81c6805373889424c23151b58b63997b
-KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' --junitxml=/private/tmp/kestrel-verification-audit-fixes/core.xml -q
+export KESTREL_SOURCE_REVISION=ac9879e9a7725558468112f9f3950c687cf0a84d
+KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' --junitxml=/private/tmp/kestrel-verification-ac9879e/core.xml -q
 uv build --offline
-KESTREL_TEST_SCOPE=install KESTREL_WHEEL=/Users/iamsikun/research/kestrel/dist/kestrel_research_runtime-0.1.0-py3-none-any.whl KESTREL_WHEELHOUSE=/private/tmp/kestrel-wheelhouse KESTREL_INSTALL_EVIDENCE=/private/tmp/kestrel-verification-audit-fixes/install-evidence.json .venv/bin/python -m pytest tests/test_install.py -q --junitxml=/private/tmp/kestrel-verification-audit-fixes/install.xml
-KESTREL_TEST_SCOPE=isolation KESTREL_TEST_PROFILE=isolated-local KESTREL_TEST_RUNTIME=linux-docker-vm KESTREL_RUN_ISOLATION=1 KESTREL_DOCKER_IMAGE=sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca .venv/bin/python -m pytest tests/test_runners.py -m isolation -q --junitxml=/private/tmp/kestrel-verification-audit-fixes/isolation.xml
+KESTREL_TEST_SCOPE=install KESTREL_WHEEL=/Users/iamsikun/research/kestrel/dist/kestrel_research_runtime-0.1.0-py3-none-any.whl KESTREL_WHEELHOUSE=/private/tmp/kestrel-wheelhouse KESTREL_INSTALL_EVIDENCE=/private/tmp/kestrel-verification-ac9879e/install-evidence.json .venv/bin/python -m pytest tests/test_install.py -q --junitxml=/private/tmp/kestrel-verification-ac9879e/install.xml
+KESTREL_TEST_SCOPE=isolation KESTREL_TEST_PROFILE=isolated-local KESTREL_TEST_RUNTIME=linux-docker-vm KESTREL_RUN_ISOLATION=1 KESTREL_DOCKER_IMAGE=sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca .venv/bin/python -m pytest tests/test_runners.py -m isolation -q --junitxml=/private/tmp/kestrel-verification-ac9879e/isolation.xml
 .venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py
 python3 tools/validate_pack.py
+git diff --check
+PYTHONPATH=/private/tmp/kestrel-review-followup-audit/candidate/src KESTREL_TEST_SCOPE=audit KESTREL_TEST_PROFILE=isolated-local KESTREL_TEST_RUNTIME=linux-docker-vm KESTREL_RUN_ISOLATION=1 KESTREL_DOCKER_IMAGE=sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca .venv/bin/python -m pytest -c pyproject.toml /private/tmp/kestrel-review-followup-audit/audit -q --junitxml=/private/tmp/kestrel-verification-ac9879e/audit.xml
 ```
 
 Do not set a previous source revision when testing changed code. The fixture
@@ -87,15 +94,17 @@ reservation. That run was not treated as a successful execution gate.
 To reproduce the acceptance calculation from the final records:
 
 ```sh
-.venv/bin/python tools/release_gates.py --junit /private/tmp/kestrel-verification-audit-fixes/core.xml --junit /private/tmp/kestrel-verification-audit-fixes/install.xml --junit /private/tmp/kestrel-verification-audit-fixes/isolation.xml --source-revision 7db8a6cb81c6805373889424c23151b58b63997b --output /private/tmp/kestrel-verification-audit-fixes/recomputed-gates.json --blocker 'A28=Actual sanitized provider captures unavailable' --blocker 'A30=Live provider test unauthorized and untested' --blocker 'A31=Credential-boundary integration unauthorized and untested' --blocker 'A43=Target GPU untested'
+.venv/bin/python tools/release_gates.py --junit /private/tmp/kestrel-verification-ac9879e/core.xml --junit /private/tmp/kestrel-verification-ac9879e/install.xml --junit /private/tmp/kestrel-verification-ac9879e/isolation.xml --source-revision ac9879e9a7725558468112f9f3950c687cf0a84d --output /private/tmp/kestrel-verification-ac9879e/recomputed-gates.json --blocker 'A28=Actual sanitized provider captures unavailable' --blocker 'A30=Live provider test unauthorized and untested' --blocker 'A31=Credential-boundary integration unauthorized, unimplemented, and untested' --blocker 'A43=Target GPU untested'
 ```
 
 This command intentionally exits 1 while A28 is blocked. The retained report
-additionally fingerprints the wheel.
+additionally fingerprints the wheel, install evidence, audit JUnit and source hashes,
+original audit report, demo and both exported packets. Audit JUnit is a supplementary
+artifact; acceptance accounting uses only the core/install/isolation JUnit scopes.
 
 ## Demo evidence and hashes
 
-Evidence directory: `/private/tmp/kestrel-verification-audit-fixes/`. Runtime data are
+Evidence directory: `/private/tmp/kestrel-verification-ac9879e/`. Runtime data are
 external to the framework checkout. These local temporary files may be removed
 by normal system cleanup; preserve them externally if long-term retention is needed.
 
@@ -103,28 +112,35 @@ The demo completed two campaigns with six charged attempts: two finite offline a
 tasks and four real fixture worker executions. All stopped and released their
 reservations. No provider calls or tokens were consumed. Numerical baseline/treatment
 errors were 0 and 4; counterexample counts were 0 and 2. Both valid findings are
-`not_supported`, and each report's cited evidence is attributable to its own campaign.
+`not_supported`, and each report's cited evidence is attributable to its own campaign and consistent
+with all three recorded outcome axes.
 This is exhaustive finite synthetic verification, with no population inference or claim
 about model intelligence.
 
-`demo.json` retains the full reports, and `evidence-packet.zip` is the exported packet
-for the demo's last campaign. Exports are scoped by campaign provenance and exclude
+`demo.json` retains the full reports. `numerical-evidence.zip` and
+`counterexample-evidence.zip` are the two exported campaign packets. Exports are scoped by campaign provenance and exclude
 operator tokens and unrelated artifacts. Imports retain imported assurance.
 
-Wheel SHA256: `65759b17ee1025faaff2407784f3a17927236ab70cf03cc52ac70950f45c41d9`.
+Wheel SHA256: `e33177f6c7f4cdb14a4c512ce5564d3843707bea5621a709a79e2625f82eac79`.
 
 | Evidence file in the directory above | SHA256 |
 |---|---|
-| `core.xml` | `1dc28e2789d3b042b613d6ca5ad976473577d5e24986c82ff6d509dc64b73b35` |
-| `install.xml` | `d41225db316ee5a6a4626fb855814bdc5d04e414b3f0b9f3f0a774f9579ba272` |
-| `isolation.xml` | `e4ffde4cefbb9ee7a27794d656200d0bf8edd84ebb7cd52d30b8f7f241389810` |
-| `install-evidence.json` | `1363c1ef027d1d72da6f6a722952caa03e102f1fb803602f9ef03d847271658f` |
-| `demo.json` | `3232a690b499e632b95e98e5365ae450068d280f2704758b1dcd3bb7a8e456b9` |
-| `evidence-packet.zip` | `f05052420cb75e75fe3d838effab825f0738a8075ec0abe4fd1786d0b7d6908a` |
-| `release-gates.json` | `37ad7b7e9bd2208e2f10a1351da61ced6574de8364beb33f59dfaa3b9718f6ef` |
+| `audit-source-hashes.json` | `e34ce2ec9959a0c9ab64f00300e667074ee6c95d4d26c11a292942d0c5ab91bf` |
+| `audit.xml` | `f13b6ac64ffb7a492dcfcfef756707bc7649384208fb52846e15d67c5ab6e1fb` |
+| `claude-audit-REPORT.md` | `b8ab1bbd4a9d015b4de1590493bab9d82bce38df6a06c1e18bcd13e604ca4247` |
+| `core.xml` | `ce64af0c26d341b7599dab03a47fe7e4f50426fc4fa2300d3b97af662842fae4` |
+| `counterexample-evidence.zip` | `20a5c47b840bf19e6c1aeb49d6583ee41b437bc5f295ce6747c628520b44e3b9` |
+| `demo.json` | `33d5013d6d338ed2aa3f110358cbdd175904fae10b0cd78af3867913d84d754e` |
+| `install-evidence.json` | `b7005b792f7b30bf0c3be591567e38b9f72b461b9d444bae751433d2db4322b9` |
+| `install.xml` | `febeb5591557d61d5653152668b3c4ca7f37ed586d22ecf4a61b17f93c41a5a9` |
+| `isolation.xml` | `560dcbf762acc303ab5b7bd1f93ceacd0601f5dab7460cb9f58367cfa8fa32a2` |
+| `numerical-evidence.zip` | `e02b6eaa4230a476535e36ff27617d57b878e3a28276f9da3262bb3a73894dec` |
+| `release-gates.json` | `1bf1565161ec12c8836926897a7a278b9b416b61acf117905b72bdefd22c009d` |
 
-`sha256.json` and `sha256.txt` list all final record hashes. Hashes establish content identity,
-not authority, authenticity or scientific validity.
+`sha256.json` lists the final record hashes; `install-logs/` preserves installer and
+CLI stdout/stderr. Hashes establish content identity, not authority, authenticity
+or scientific validity. Earlier evidence in `/private/tmp/kestrel-verification-audit-fixes/`
+and `/private/tmp/kestrel-verification-bbc40cd/` concerns earlier revisions only.
 
 ## Tested platform and enforced scope
 
@@ -184,10 +200,11 @@ API-reachable defects, all repaired in `7db8a6c`:
 
 - Independent audit report for `e03b73f`: `/private/tmp/claude-501/-Users-iamsikun-research-kestrel/64641c09-5604-48b7-82aa-019781b57bb9/scratchpad/review/REPORT.md`, SHA256 `b8ab1bbd4a9d015b4de1590493bab9d82bce38df6a06c1e18bcd13e604ca4247`.
 
-That auditor wrote the `7db8a6c` repairs and is therefore an author of this revision,
-not an independent review of it. The completion, evidence-attribution and
-provider-labelling repairs are trust-boundary changes and require a further independent
-review by a reviewer who did not write them. The audit also recorded, and this document
+That auditor wrote the `7db8a6c` repairs and is therefore an author of that revision,
+not an independent reviewer of it. This follow-up evaluated those changes, reproduced
+additional failures, and repaired them as recorded in `REVIEW_FOLLOWUP.md`. The completion, evidence-attribution and
+provider-labelling repairs, including the follow-up changes, require a further
+independent review by a reviewer who did not write them. The audit also recorded, and this document
 confirms, two limits that are not defects: a forged JUnit record can declare full
 readiness, because the gate report is evidence bookkeeping and not operator authority;
 and the container profile pins no seccomp or AppArmor profile and uses no user-namespace
