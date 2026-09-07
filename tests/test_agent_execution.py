@@ -304,3 +304,50 @@ def test_offline_cancellation_cannot_certify_another_backend_stopped(tmp_path):
         current = lab.controller.attempt(attempt["id"])
         assert current["state"] == "STARTING" and current["resources_held"]
         assert not current["stopped_confirmed"]
+
+
+@pytest.mark.acceptance("A29")
+@pytest.mark.parametrize("forgery", ["live", "captured", "provider-version"])
+def test_receipt_output_provenance_must_match_the_frozen_plan(tmp_path, forgery):
+    """Independent audit regression: the receipt-driven recovery path replays a
+    stored output without reinvoking the reader, so that output's provenance must
+    still match the frozen plan. A live label has no authorized integration."""
+    with Lab.initialize(tmp_path / "lab") as lab:
+        if forgery == "provider-version":
+            # A pinned provider version only exists for a replay plan; the mock
+            # backend declares none, so that case must exercise the replay path.
+            recording = MockAgent().run(historical_task()).model_dump(mode="json")
+            recording["source"] = "synthetic_recording"
+            campaign, task, approval = prepare(lab, canonical(recording))
+        else:
+            campaign, task, approval = prepare(lab)
+        attempt = reserve(lab, task, approval)
+        plan_digest = lab.controller.task(task)["spec"]["recipe"]
+        honest = MockAgent().run(historical_task()).model_dump(mode="json")
+        honest.update(task_id=task, contract_digest=lab.controller.campaign(campaign)["digest"])
+        if forgery == "live":
+            honest.update(source="live", provider="claude",
+                          provider_version="claude-opus-unverified")
+        elif forgery == "captured":
+            honest.update(source="captured_recording", provider="codex",
+                          provider_version="codex-cli-unverified")
+        else:
+            honest.update(source="synthetic_recording",
+                          provider_version="kestrel-mock-v99-unpinned")
+        forged = lab.store.put_bytes(canonical(honest), producer="test:forged-agent-output")
+        plan = AgentPlan.model_validate(parse_json(lab.store.read(plan_digest)))
+        lab.agents._write(attempt["id"], {
+            "attempt_id": attempt["id"], "plan": plan_digest,
+            "input_recording": plan.recording,
+            "output": forged["digest"], "usage": {"provider_calls": 0, "tokens": 0},
+            "elapsed_seconds": 0.0, "status": "completed", "error": None,
+        })
+        expected = ("No authorized live provider integration" if forgery == "live"
+                    else "provenance differs from the frozen plan")
+        with pytest.raises(ValueError, match=expected):
+            lab.agents.run(attempt["id"])
+        current = lab.controller.attempt(attempt["id"])
+        assert current["state"] != "SUCCEEDED"
+        assert current["result"] is None
+        assert lab.controller.results(campaign) == []
+        assert lab.controller.budget_used(campaign)["provider_calls"] == 0

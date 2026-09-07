@@ -353,9 +353,11 @@ class Lab:
                        for record in (attempt["result"], attempt["diagnostic"]) if record
                        for key, identity in record.items()
                        if key in {"raw", "execution", "observation"} and identity is not None]
-            diagnostic = self._put({"execution": "failed", "validity": "invalid",
-                                    "finding": "inconclusive", "attempts": self.controller.attempts(campaign_id)},
-                                   producer=f"diagnostic:{campaign_id}", lineage=lineage)
+            diagnostic = self._put({"campaign_id": campaign_id, "execution": "failed",
+                                    "validity": "invalid", "finding": "inconclusive",
+                                    "attempts": self.controller.attempts(campaign_id)},
+                                   producer=f"diagnostic:{campaign_id}",
+                                   lineage=[*lineage, campaign["digest"]])
             self.controller.complete(campaign_id, execution_status="failed", protocol_status="invalid",
                                       finding="INCONCLUSIVE", evidence_ids=[diagnostic["digest"]])
         return self.report(campaign_id)
@@ -370,13 +372,21 @@ class Lab:
             for identity in outcome["evidence_ids"]:
                 record = self.store.get(identity)
                 analysis = parse_json(self.store.read(identity))
+                # Valid, independently recomputed bytes are not this campaign's
+                # evidence unless they are actually attributable to it. Borrowed
+                # analysis from another campaign cannot certify this one.
+                attributable = (analysis.get("campaign_id") == campaign_id
+                                and campaign["digest"] in record["lineage"])
                 analysis["assurance"] = record["assurance"]
-                if record["status"] != "valid":
+                if record["status"] != "valid" or not attributable:
                     analysis = {**analysis, "validity": "invalid", "finding": "inconclusive",
                                 "assurance": "unverified"}
                 evidence.append({"digest": identity, "status": record["status"],
-                                 "assurance": record["assurance"], "analysis": analysis})
-            validity = outcome["protocol_status"] if all(e["status"] == "valid" for e in evidence) else "invalid"
+                                 "assurance": record["assurance"], "analysis": analysis,
+                                 "attributable": attributable})
+            validity = (outcome["protocol_status"]
+                        if all(e["status"] == "valid" and e["attributable"] for e in evidence)
+                        else "invalid")
             if validity == "valid":
                 assurance = ("independently_recomputed" if all(e["assurance"] == "independently_recomputed" for e in evidence)
                              else "imported" if any(e["assurance"] == "imported" for e in evidence)
@@ -417,9 +427,11 @@ class Lab:
                           for record in (attempt["result"], attempt["diagnostic"]) if record
                           for key, value in record.items()
                           if key in {"observation", "raw", "execution"} and value is not None]
-            stopped = self._put({"execution": "cancelled", "validity": "incomplete",
-                                 "finding": "inconclusive", "tasks": tasks, "attempts": attempts},
-                                producer=f"cancellation:{campaign_id}", lineage=references,
+            stopped = self._put({"campaign_id": campaign_id, "execution": "cancelled",
+                                 "validity": "incomplete", "finding": "inconclusive",
+                                 "tasks": tasks, "attempts": attempts},
+                                producer=f"cancellation:{campaign_id}",
+                                lineage=[*references, campaign["digest"]],
                                 historical=True)
             self.controller.complete(campaign_id, execution_status="cancelled", protocol_status="incomplete",
                                       finding="INCONCLUSIVE", evidence_ids=[stopped["digest"]])

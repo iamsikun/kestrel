@@ -359,3 +359,53 @@ def test_report_rejects_tampered_computed_artifact_instead_of_certifying_invente
         with pytest.raises(ArtifactError, match="hash mismatch"):
             lab.export(campaign, root / "tampered-export")
         assert lab.controller.campaign(campaign)["outcome"]["finding"] == "NOT_SUPPORTED"
+
+
+@pytest.mark.acceptance("A27")
+@pytest.mark.acceptance("A40")
+def test_borrowed_evidence_from_another_campaign_cannot_certify_a_report(tmp_path):
+    """Independent audit regression: valid, independently recomputed bytes are
+    not this campaign's evidence unless they are attributable to it."""
+    manifests = generate(tmp_path / "external-projects", framework_root())
+    with Lab.initialize(tmp_path / "external-lab") as lab:
+        token = (lab.root / "operator.token").read_text()
+        first = lab.register(manifests[0], snapshot_dirty=True)
+        campaign_a = lab.propose(first["project_id"], "Establish real attributable evidence.")
+        approval = lab.approve(campaign_a, lab.controller.campaign(campaign_a)["digest"], token)
+        report_a = lab.run(campaign_a, approval)
+        borrowed = report_a["evidence"][0]["digest"]
+        assert report_a["validity"] == "valid"
+        assert report_a["evidence"][0]["attributable"] is True
+        assert lab.store.get(borrowed)["assurance"] == "independently_recomputed"
+
+        second = lab.register(manifests[1], snapshot_dirty=True)
+        campaign_b = lab.propose(second["project_id"], "Perform no work and cite campaign A.")
+        for task in lab.controller.tasks(campaign_b):
+            lab.controller.cancel_task(task["id"], "Audit regression: no work performed")
+        lab.controller.complete(
+            campaign_b,
+            execution_status="cancelled",
+            protocol_status="incomplete",
+            finding="INCONCLUSIVE",
+            evidence_ids=[borrowed],
+        )
+        forged = lab.report(campaign_b)
+        assert forged["state"] == "COMPLETE"
+        assert forged["attempts"] == []
+        assert forged["evidence"][0]["attributable"] is False
+        assert forged["validity"] == "invalid"
+        assert forged["finding"] == "inconclusive"
+        assert forged["assurance"] == "unverified"
+        # The cited analysis still names the campaign that actually produced it.
+        assert json.loads(lab.store.read(borrowed))["campaign_id"] == campaign_a
+        with pytest.raises(ValueError):
+            lab.quantitative_claim(campaign_b, {
+                "analysis": borrowed, "field": "difference",
+                "value": json.loads(lab.store.read(borrowed))["difference"],
+            })
+        # Campaign A's own certified claim is unaffected.
+        assert lab.report(campaign_a)["validity"] == "valid"
+        assert lab.quantitative_claim(campaign_a, {
+            "analysis": borrowed, "field": "difference",
+            "value": json.loads(lab.store.read(borrowed))["difference"],
+        })["assurance"] == "independently_recomputed"

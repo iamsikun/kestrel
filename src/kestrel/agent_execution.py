@@ -169,6 +169,14 @@ class OfflineAgents:
             if output_record["status"] != "valid" or output_record["size"] > plan.max_output_bytes:
                 raise ValueError("Agent output is invalid or oversized")
             result = validate_result(task, self.store.read(receipt["output"]))
+            # A durable receipt is replayed without reinvoking the reader, so the
+            # stored output's provenance must still match the frozen plan. The mock
+            # backend emits its own label; a plan's recording source never applies.
+            expected_source = "deterministic_mock" if plan.backend == "mock" else plan.source
+            if result.source != expected_source or (
+                plan.backend != "mock" and result.provider_version != plan.provider_version
+            ):
+                raise ValueError("Agent output provenance differs from the frozen plan")
             if result.status != "completed" or (plan.expected_proposals is not None and result.proposals != plan.expected_proposals):
                 raise ValueError("Receipt does not match a validated completed agent result")
         attempt = self.controller.reconcile(attempt["id"], lambda label: {

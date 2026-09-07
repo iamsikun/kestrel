@@ -40,6 +40,22 @@ def test_duplicate_events_and_authority_edits_rejected():
         validate_result(task(), canonical(value))
 
 
+@pytest.mark.acceptance("A29")
+def test_live_labelled_results_are_refused_by_the_shared_boundary():
+    """Independent audit regression: no authorized live integration exists, so the
+    shared typed boundary cannot publish a result claiming live provenance."""
+    completed = MockAgent().run(task()).model_dump(mode="json")
+    for source in ("deterministic_mock", "synthetic_recording", "captured_recording"):
+        assert validate_result(task(), canonical({**completed, "source": source}))
+    with pytest.raises(ValueError, match="No authorized live provider integration"):
+        validate_result(task(), canonical({**completed, "source": "live"}))
+    failed = {**completed, "status": "error", "proposals": []}
+    with pytest.raises(ValueError, match="No authorized live provider integration"):
+        validate_result(task(), canonical({**failed, "source": "live"}))
+    with pytest.raises(PermissionError):
+        live_agent()
+
+
 def test_synthetic_normalized_provider_recordings_are_not_live_captures():
     for provider in ("codex", "claude"):
         value = MockAgent().run(task()).model_dump()

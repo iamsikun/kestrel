@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import math
+import re
 import secrets
 import sqlite3
 import time
@@ -46,6 +47,7 @@ TRANSITIONS = {
     "VERIFYING": frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "RECOVERING"}),
     **{state: frozenset() for state in TERMINAL},
 }
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 BUDGET_KEYS = frozenset({"attempts", "runtime_seconds", "provider_calls", "tokens"})
 RESOURCE_KEYS = frozenset({"cpu", "gpu", "memory_mb", "storage_mb"})
 PROHIBITED_ACTIONS = frozenset(
@@ -1019,10 +1021,17 @@ class Controller:
             raise StateError(
                 "Invalid or incomplete protocol cannot support a scientific conclusion"
             )
+        # An execution that did not succeed is an execution outcome, not a scientific
+        # one. Failed, lost and cancelled work stays inconclusive; it is never
+        # relabelled as a supported or refuted claim.
+        if execution_status != "succeeded" and finding in {"SUPPORTED_IN_SCOPE", "NOT_SUPPORTED"}:
+            raise StateError(
+                "Unsuccessful execution cannot support or refute a scientific conclusion"
+            )
         if (
             type(evidence_ids) is not list
             or not evidence_ids
-            or any(type(value) is not str or not value for value in evidence_ids)
+            or any(type(value) is not str or not _SHA256.fullmatch(value) for value in evidence_ids)
         ):
             raise StateError("Completion requires registered evidence references")
         with self._transaction():
@@ -1057,6 +1066,15 @@ class Controller:
                     raise StateError(
                         "Successful execution requires recorded verified result references"
                     )
+            # A valid protocol needs at least one verified observation. Declaring
+            # validity over an empty or entirely unverified ledger is not a finding.
+            if protocol_status == "valid" and not self._db.execute(
+                "SELECT 1 FROM attempts a JOIN results r ON a.id=r.attempt_id WHERE a.campaign_id=? AND a.state='SUCCEEDED'",
+                (campaign_id,),
+            ).fetchone():
+                raise StateError(
+                    "A valid protocol requires at least one verified succeeded attempt"
+                )
             outcome = {
                 "execution_status": execution_status,
                 "protocol_status": protocol_status,
@@ -1321,8 +1339,18 @@ class Controller:
     def retrieve_memory(
         self, record_id: str, *, principal: str, requesting_project: str
     ) -> dict[str, Any]:
+        """Authorize against the source project AND the asking project's context.
+
+        A grant on the record's own project does not follow its principal into an
+        unrelated campaign. Approved public de-identified records are the only
+        cross-project channel, so restricted material cannot travel that way.
+        """
+        if type(requesting_project) is not str or not requesting_project:
+            raise ControllerError("Memory retrieval requires an explicit requesting project")
         allowed = False
         content = None
+        cross_project = None
+        reason = "unknown memory record"
         with self._transaction():
             row = self._db.execute("SELECT * FROM memory WHERE id=?", (record_id,)).fetchone()
             if row is not None:
@@ -1330,16 +1358,30 @@ class Controller:
                     "SELECT 1 FROM project_permissions WHERE principal=? AND project_id=? AND classification=?",
                     (principal, row["project_id"], row["classification"]),
                 ).fetchone()
-                allowed = bool(permission) or (
-                    row["classification"] == "public" and bool(row["shareable"])
-                )
+                cross_project = requesting_project != row["project_id"]
+                approved_public = row["classification"] == "public" and bool(row["shareable"])
+                allowed = (bool(permission) and not cross_project) or approved_public
                 if allowed:
                     content = json.loads(row["content"])
+                    reason = (
+                        "approved public de-identified sharing"
+                        if cross_project
+                        else "source project permission"
+                    )
+                elif cross_project:
+                    reason = "cross-project retrieval requires approved public sharing"
+                else:
+                    reason = "principal lacks source project permission"
             self._event(
                 None,
                 "memory_retrieval_allowed" if allowed else "memory_retrieval_denied",
                 record_id,
-                {"principal": principal, "requesting_project": requesting_project},
+                {
+                    "principal": principal,
+                    "requesting_project": requesting_project,
+                    "cross_project": cross_project,
+                    "reason": reason,
+                },
             )
         if not allowed:
             raise AuthorityError(

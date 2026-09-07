@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import tempfile
@@ -61,7 +62,8 @@ def succeeded(store: Controller, attempt: dict) -> dict:
     attempt = store.transition(attempt["id"], "RUNNING", fence=attempt["fence"])
     attempt = store.reconcile(attempt["id"], inspect("stopped"))
     attempt = store.transition(attempt["id"], "VERIFYING", fence=attempt["fence"])
-    store.record_result(attempt["id"], {"observation_id": f"observation-{attempt['id']}"})
+    observation = hashlib.sha256(f"observation-{attempt['id']}".encode()).hexdigest()
+    store.record_result(attempt["id"], {"observation_id": observation})
     return store.transition(attempt["id"], "SUCCEEDED", fence=attempt["fence"])
 
 
@@ -375,13 +377,15 @@ def test_failed_execution_cannot_be_relabelled_success_by_attaching_a_report(sto
     store.transition(attempt["id"], "FAILED", fence=attempt["fence"])
     store.reconcile(attempt["id"], inspect("stopped"))
     store.freeze(campaign_id)
+    # Shape-valid but unregistered, so the deeper state checks are what refuse it.
+    invented = "c" * 64
     with pytest.raises(StateError, match="all declared tasks"):
         store.complete(
             campaign_id,
             execution_status="succeeded",
             protocol_status="valid",
             finding="NOT_SUPPORTED",
-            evidence_ids=["invented-report"],
+            evidence_ids=[invented],
         )
     with pytest.raises(StateError, match="cannot support"):
         store.complete(
@@ -389,9 +393,86 @@ def test_failed_execution_cannot_be_relabelled_success_by_attaching_a_report(sto
             execution_status="failed",
             protocol_status="invalid",
             finding="SUPPORTED_IN_SCOPE",
-            evidence_ids=["invented-report"],
+            evidence_ids=[invented],
         )
     assert store.campaign(campaign_id)["state"] == "FROZEN"
+
+
+@pytest.mark.acceptance("A27")
+def test_unsuccessful_execution_cannot_certify_a_scientific_finding(store):
+    """Independent audit regression: a substantive finding needs succeeded work,
+    real evidence identities, and at least one verified observation."""
+    campaign_id, approval_id = authorize(store)
+    task = store.add_task(campaign_id, {"id": "abandoned"})
+    attempt = reserve(store, task, approval_id)
+    store.transition(attempt["id"], "LOST", fence=attempt["fence"])
+    store.reconcile(attempt["id"], inspect("stopped"))
+    store.freeze(campaign_id)
+    digest = "d" * 64
+    for execution_status in ("failed", "lost", "cancelled"):
+        for finding in ("SUPPORTED_IN_SCOPE", "NOT_SUPPORTED"):
+            with pytest.raises(StateError, match="Unsuccessful execution cannot"):
+                store.complete(
+                    campaign_id,
+                    execution_status=execution_status,
+                    protocol_status="valid",
+                    finding=finding,
+                    evidence_ids=[digest],
+                )
+    # Evidence references must be content addresses, not free text.
+    for unshaped in ("invented-report", "", "C" * 64, "d" * 63, "g" * 64, digest + "0"):
+        with pytest.raises(StateError, match="registered evidence references"):
+            store.complete(
+                campaign_id,
+                execution_status="lost",
+                protocol_status="incomplete",
+                finding="INCONCLUSIVE",
+                evidence_ids=[unshaped],
+            )
+    # A valid protocol needs a verified observation, not merely a stopped ledger.
+    with pytest.raises(StateError, match="at least one verified succeeded attempt"):
+        store.complete(
+            campaign_id,
+            execution_status="lost",
+            protocol_status="valid",
+            finding="INCONCLUSIVE",
+            evidence_ids=[digest],
+        )
+    assert store.campaign(campaign_id)["state"] == "FROZEN"
+    assert store.campaign(campaign_id)["outcome"] is None
+    # The honest outcome for abandoned work remains available.
+    store.complete(
+        campaign_id,
+        execution_status="lost",
+        protocol_status="incomplete",
+        finding="INCONCLUSIVE",
+        evidence_ids=[digest],
+    )
+    assert store.campaign(campaign_id)["outcome"]["finding"] == "INCONCLUSIVE"
+
+
+@pytest.mark.acceptance("A27")
+def test_empty_campaign_cannot_declare_a_valid_protocol(store):
+    """Independent audit regression: zero attempts is not a valid protocol."""
+    campaign_id, _ = authorize(store)
+    store.freeze(campaign_id)
+    with pytest.raises(StateError, match="Unsuccessful execution cannot"):
+        store.complete(
+            campaign_id,
+            execution_status="failed",
+            protocol_status="valid",
+            finding="SUPPORTED_IN_SCOPE",
+            evidence_ids=["e" * 64],
+        )
+    with pytest.raises(StateError, match="at least one verified succeeded attempt"):
+        store.complete(
+            campaign_id,
+            execution_status="failed",
+            protocol_status="valid",
+            finding="INCONCLUSIVE",
+            evidence_ids=["e" * 64],
+        )
+    assert store.campaign(campaign_id)["outcome"] is None
 
 
 class DurableTestDriver:
@@ -683,6 +764,67 @@ def test_restricted_cross_project_memory_denied_and_decision_recorded(store):
             deidentified=True,
             token=TOKEN,
         )
+
+
+@pytest.mark.acceptance("A45")
+def test_source_grant_does_not_follow_a_principal_into_another_project(store):
+    """Independent audit regression: a grant on the record's own project does not
+    authorize pulling it into an unrelated project's context."""
+    restricted = store.record_memory(
+        "synthetic-a", {"kind": "claim", "text": "restricted synthetic sentinel"}
+    )
+    unshared_public = store.record_memory(
+        "synthetic-a", {"kind": "claim", "text": "public but unshared sentinel"},
+        classification="public",
+    )
+    store.grant_project_access(
+        token=TOKEN,
+        principal="reader-a",
+        project_id="synthetic-a",
+        classifications=["restricted", "public"],
+    )
+    # Same project: the grant applies.
+    assert store.retrieve_memory(
+        restricted, principal="reader-a", requesting_project="synthetic-a"
+    )["text"].endswith("sentinel")
+    # Another project: the same grant no longer applies to restricted material.
+    with pytest.raises(AuthorityError, match="source permission or approved public"):
+        store.retrieve_memory(
+            restricted, principal="reader-a", requesting_project="synthetic-b"
+        )
+    denial = store.events()[-1]
+    assert denial["kind"] == "memory_retrieval_denied"
+    assert denial["detail"]["cross_project"] is True
+    assert denial["detail"]["requesting_project"] == "synthetic-b"
+    assert "approved public sharing" in denial["detail"]["reason"]
+    assert "sentinel" not in json.dumps(denial)
+    # Public alone is not a cross-project channel; it must be approved shareable.
+    with pytest.raises(AuthorityError):
+        store.retrieve_memory(
+            unshared_public, principal="reader-a", requesting_project="synthetic-b"
+        )
+    # An absent requesting project is not a way to skip the check.
+    for missing in (None, "", 0):
+        with pytest.raises(ControllerError, match="explicit requesting project"):
+            store.retrieve_memory(
+                restricted, principal="reader-a", requesting_project=missing
+            )
+    shared = store.record_memory(
+        "synthetic-a",
+        {"kind": "methodology", "text": "Check independent analytic oracles."},
+        classification="public",
+        shareable=True,
+        deidentified=True,
+        token=TOKEN,
+    )
+    allowed = store.retrieve_memory(
+        shared, principal="reader-a", requesting_project="synthetic-b"
+    )
+    assert allowed["kind"] == "methodology"
+    decision = store.events()[-1]
+    assert decision["kind"] == "memory_retrieval_allowed"
+    assert decision["detail"]["cross_project"] is True
+    assert decision["detail"]["reason"] == "approved public de-identified sharing"
 
 
 class AttemptReferenceMachine(RuleBasedStateMachine):

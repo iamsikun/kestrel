@@ -51,6 +51,10 @@ def validate_result(task: AgentTask, payload: bytes) -> AgentResult:
     ids = [event.get("id") for event in result.events]
     if any(type(identity) is not str for identity in ids) or len(ids) != len(set(ids)):
         raise ValueError("Duplicate or missing provider event identity")
+    if result.source == "live":
+        raise ValueError(
+            "No authorized live provider integration exists; a live label cannot be published"
+        )
     if result.status != "completed" and result.proposals:
         raise ValueError("Failed provider results cannot publish candidate proposals")
     if any(p.path not in task.allowed_paths for p in result.proposals):

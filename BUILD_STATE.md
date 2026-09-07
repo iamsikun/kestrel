@@ -1,9 +1,11 @@
 # Build state
 
-Status: functional deterministic first pilot on `build/first-pilot`. Tested code:
-`2157914e776b42112e00ec3a760eec7fc024022a`. Subsequent documentation commits do not
-change this code. Acceptance is incomplete: 42 requirements passed, 4 blocked.
-No deployment authorized. No ongoing jobs or promised continuation after this session.
+Status: functional deterministic first pilot on `build/first-pilot`, with independent
+audit repairs to completion authority, evidence attribution, memory scope and provider
+labelling committed on top of `2157914e776b42112e00ec3a760eec7fc024022a`. Exact-revision
+verification of the repaired source is in progress; the previous 42-passed/4-blocked
+accounting describes the earlier revision and does not certify this one. No deployment
+authorized. No ongoing jobs or promised continuation after this session.
 
 ## Implemented
 

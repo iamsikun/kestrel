@@ -82,3 +82,37 @@
   claimed identities and available classification metadata. It does not parse
   the plan or claim its contents were verified. That operational stop record does
   not restore scientific validity or make missing evidence exportable.
+
+## Independent audit repairs
+
+Authored by the independent auditor of `e03b73f` after that read-only review, so
+this revision has an author who cannot also be its independent review.
+
+- A substantive scientific finding requires successful execution. Completion now
+  refuses `supported_in_scope` and `not_supported` whenever execution failed, was
+  lost or was cancelled; such work stays inconclusive. Execution failure is an
+  execution outcome, not a negative result, and an unfavourable score is still a
+  successful campaign, so an honest negative finding after successful execution
+  remains reachable exactly as before.
+- Outcome evidence references are content addresses, not free text, and a valid
+  protocol requires at least one verified succeeded attempt. The controller holds
+  no artifact store handle by design, so it enforces reference shape and the
+  existence of verified work; it cannot resolve artifact content.
+- Cited evidence must be attributable to the campaign citing it. Campaign outcome
+  artifacts carry their campaign identity and a lineage edge to the frozen
+  contract, and a report treats unattributable evidence exactly like invalid
+  evidence. Valid, independently recomputed bytes produced by another campaign
+  confer no assurance here; hashing content and binding it to a verified attempt
+  is what makes it evidence.
+- Memory retrieval authorizes against the asking project as well as the source
+  project. A grant on a record's own project does not follow its principal into an
+  unrelated campaign, and approved public de-identified records remain the only
+  cross-project channel, so restricted material cannot travel that way. This is
+  stricter than the acceptance text, which requires source permissions and
+  classification checks alone; the requesting project was previously recorded
+  without being consulted.
+- A result labelled as a live provider call is refused at the shared typed
+  boundary, and a replayed durable receipt must still match its frozen plan's
+  source and provider version. No authorized live integration, credential
+  boundary or version pin exists, so nothing offline may claim live provenance.
+  Enabling it requires the separate authorized work behind A30 and A31.
