@@ -3,10 +3,14 @@
 For a consolidated code map, current capability limits, and product gaps, read
 [REPOSITORY_GUIDE.md](REPOSITORY_GUIDE.md).
 
-The original README and build specifications are preserved byte-for-byte. The
+The root [README](../README.md) is the current quickstart. The original kit README
+is archived byte-for-byte at [specification/README.md](specification/README.md);
+the original build specifications remain preserved. The
 implementation is a developer pilot; read `BUILD_STATE.md` for the latest evidence
 and remaining gates. Registering an arbitrary project does not grant permission
-to execute it. The developer CLI executes only exact generated fixture programs.
+to execute it. The `campaign` commands execute exact generated fixture programs. The separate
+`project add` and `experiment` workflow supports approved synthetic project operations
+in isolated Docker workers; see the [project tutorial](PROJECT_TUTORIAL.md).
 
 ## Setup and offline demo
 
@@ -32,7 +36,55 @@ offline testing of trusted code; it is not an OS security boundary. Process-stat
 inspection must be permitted so the supervisor can confirm entire job termination.
 If that check is unavailable, attempts remain uncertain and resources stay reserved.
 
-## CLI adoption flow
+## Manual fixture campaign
+
+First run the [README demo](../README.md#run-it-now) to create
+`/tmp/kestrel-first-lab`, including the registered `numerical` project. The demo
+already runs two campaigns automatically. The steps below create one additional
+campaign against that same generated project so you can inspect and approve the
+plan yourself. They make no live provider calls.
+
+From the framework checkout:
+
+```sh
+KESTREL_LAB=/tmp/kestrel-first-lab
+printf '%s\n' 'Does the inferior numerical method improve the finite-domain error?' > "$KESTREL_LAB/brief.txt"
+uv run --offline kestrel --lab "$KESTREL_LAB" campaign propose --project numerical --brief "$KESTREL_LAB/brief.txt" > "$KESTREL_LAB/proposal.json"
+KESTREL_CAMPAIGN=$(uv run --offline python -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$KESTREL_LAB/proposal.json")
+KESTREL_DIGEST=$(uv run --offline python -c 'import json,sys; print(json.load(open(sys.argv[1]))["digest"])' "$KESTREL_LAB/proposal.json")
+uv run --offline kestrel --lab "$KESTREL_LAB" campaign inspect "$KESTREL_CAMPAIGN"
+```
+
+Read the displayed contract before approving. It preserves your brief and freezes
+the existing baseline and inferior fixture candidate, their evaluation, three
+attempts, and eleven reserved runtime seconds. The question text does not invoke
+a planner or change that fixed design.
+
+To approve that exact digest and run it:
+
+```sh
+uv run --offline kestrel --lab "$KESTREL_LAB" campaign approve "$KESTREL_CAMPAIGN" --digest "$KESTREL_DIGEST" --operator-token-file "$KESTREL_LAB/operator.token" > "$KESTREL_LAB/approval.json"
+KESTREL_APPROVAL=$(uv run --offline python -c 'import json,sys; print(json.load(open(sys.argv[1]))["approval_id"])' "$KESTREL_LAB/approval.json")
+uv run --offline kestrel --lab "$KESTREL_LAB" campaign run "$KESTREL_CAMPAIGN" --approval "$KESTREL_APPROVAL"
+uv run --offline kestrel --lab "$KESTREL_LAB" campaign report "$KESTREL_CAMPAIGN"
+uv run --offline kestrel --lab "$KESTREL_LAB" evidence export "$KESTREL_CAMPAIGN" --output "$KESTREL_LAB/manual-evidence.zip"
+```
+
+The local approval lasts one hour. If it expires before execution, inspect the
+campaign and create a fresh approval for its unchanged digest. A completed run
+can be inspected repeatedly. Repeating `campaign run` reconciles the same work;
+it does not create a new scientific replicate. Use another export filename if
+`manual-evidence.zip` already exists.
+
+## Registration and command reference
+
+The following is a command reference with placeholders, not a runnable arbitrary
+project tutorial. Replace `PROJECT_ID` with the registry's `project_id`,
+`CAMPAIGN_ID` with a proposal's `id`, `EXACT_DIGEST` with its `digest`, and
+`APPROVAL_ID` with an approval's `approval_id`. Registration supports external
+directory snapshots; campaign proposal/execution still requires the exact
+generated fixture sources. The YAML files under `examples/` are original design
+drafts and cannot be used as runnable manifests without implementing their gaps.
 
 All lab/runtime/project paths must stay outside the framework. Sidecars contain
 data and argument vectors; registration never runs Git, imports, setup hooks or
@@ -55,9 +107,9 @@ kestrel --lab /absolute/new/lab evidence export CAMPAIGN_ID --output /external/p
 ```
 
 Campaign proposal currently supplies the built-in finite numerical/counterexample
-protocol for generated fixture sources. General sidecar registration, the typed
-controller and Docker driver are usable components; a general isolated campaign
-application and separately operated deployment are not enabled by this CLI.
+protocol for generated fixture sources. General sidecar registration remains available. The separate execution-only
+`experiment` workflow uses the controller and Docker driver for connected projects;
+it does not supply independent scientific evaluation or a deployed service.
 
 Active conformance executes or reuses the approved tiny fixture campaign and checks
 its real receipts, artifact identities, response schema, failure handling and

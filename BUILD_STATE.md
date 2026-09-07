@@ -1,5 +1,19 @@
 # Build state
 
+PR #4 merge preparation (2026-09-07): incorporating main at `9fb75ef`, including
+project integration and the maintained README. CLI imports/dispatch retain both
+project/experiment commands and messaging commands. Both sets of decisions are
+retained. Combined verification passed: 486 core tests (2 skipped, 18 deselected),
+17 Docker VM isolation tests, and 1 clean install with real synthetic Docker
+workflows. Static/pack/whitespace checks passed. Evidence and commands:
+[docs/PR4_MERGE_VERIFICATION.md](docs/PR4_MERGE_VERIFICATION.md). Earlier results
+below certify their recorded source snapshots only.
+
+Project integration on main includes selected-source snapshots, explicit approvals,
+isolated execution-only experiments, cancellation/recovery and installed workflows.
+Its prior evidence is recorded in `9fb75ef:BUILD_STATE.md` and
+`/private/tmp/kestrel-integration-evidence/`; no separate worktree was accessed.
+
 Telegram messaging audit repairs completed offline on `build/telegram-messaging`
 (2026-09-07). All nine findings have code repairs and 30 new regression cases.
 [docs/MESSAGING_REPAIRS.md](docs/MESSAGING_REPAIRS.md) records implementation,

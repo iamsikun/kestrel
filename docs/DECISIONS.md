@@ -28,6 +28,19 @@
   time/policy per candidate. Failed inbound persistence holds the batch cursor;
   only a durably existing identity qualifies as a replay.
 
+## 2026-09-07 — make the root README a current user entry point
+
+- The user's request for usable README instructions supersedes the earlier choice
+  to keep the original kit introduction at the repository root. Archive its exact
+  bytes at `docs/specification/README.md` and change only that entry's path in
+  `kit-manifest.json`, retaining its original size and SHA-256. The validator still
+  checks all 20 original payloads; acceptance requirements, milestones, security
+  rules, and validator behavior remain unchanged. This is a documented relocation,
+  not a new checksum certifying an edited specification.
+- The root README becomes maintained implementation documentation: the offline
+  demo, how to inspect/export results, and the explicit absence of general research
+  project execution or a live agent. No runtime capability or authority is added.
+
 ## 2026-09-06 — first pilot
 
 - Preserve the supplied specification files and their integrity manifest unchanged.
@@ -434,3 +447,25 @@ remain unauthorized and undone.
   unsatisfied gate stays visible rather than being deselected out of sight. It
   carries no messaging acceptance marker, so a skip cannot be mistaken for
   coverage of the live half of N-A19.
+
+## 2026-09-07 — existing-project integration
+
+- Add selected-source snapshots as specified in PROJECT_INTEGRATION.md before
+  implementation, preserving the complete-directory mode and pinned requirements.
+- Connections identify source locations; revisions identify canonical contracts;
+  snapshots bind revisions and selected bytes. No Git command or setup hook runs.
+- Execution-only experiments share the controller ledger and operator approvals.
+  They provide protocol-checked, self-reported project output, with no scientific
+  evaluation claim. No live provider, implicit image pull, host fallback or deploy.
+
+- Preserve the original validator itself as a pinned specification artifact. The
+  new `tools/validate.py` wrapper changes only presentation: it removes the original
+  kit's fixed `framework_implemented` declaration and emits `runtime_verification:
+  not_run`. All original 46 requirements and original file hashes are retained.
+- Preserve input invalidation as a launch blocker, but use the immutable controller
+  contract for cancellation even when evidence was invalidated. A historical stop
+  receipt does not restore validity. Both pre-launch and running-worker regressions
+  cover this distinction.
+- Keep execution-only outcome interpretation compatible with shared reports and
+  briefings. Expose actual process success separately from protocol validity;
+  scientific outcome stays `not_evaluated`, including a successful self-report.

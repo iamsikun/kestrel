@@ -1,0 +1,10 @@
+{
+  "/private/tmp/kestrel-pr4-merge/core.xml": "3d83947cb6328358e9eac1ea880827e64990985a4988906c5a86a29cd72fe17a",
+  "/private/tmp/kestrel-pr4-merge/combined-cli.xml": "755a1327ddfd9ee5e6c25862b0e4a09d2fa0869233f55e20e105bc4c6ab86a04",
+  "/private/tmp/kestrel-pr4-merge/isolation.xml": "08960d93e540cd3bf0d809091fd5695ab6da61e57a93302f25c9b2b16065ac92",
+  "/private/tmp/kestrel-pr4-merge/install.xml": "a24221a8b466188e40979861b7b0fdc245148a357065f52f78fbb6951ff82bed",
+  "/private/tmp/kestrel-pr4-merge/install-evidence.json": "496a08d5585d608246be670516e81adec19ae09defb15f63d2109be098042dc6",
+  "/private/tmp/kestrel-pr4-merge/release-gates.json": "8dbe7e055924fefca3b58505e9d1ec874c8edb5860e4f4d11030a0addc914948",
+  "/private/tmp/kestrel-pr4-merge/source-sha256.json": "be342fa9a7f703e98910c0e3baefa8b80d9b84b9a1d175c01e1eae90f3f133fd",
+  "dist/kestrel_research_runtime-0.1.0-py3-none-any.whl": "3d75902a03dff2225346a021e87f2ca18ee7d34e8ce63051cf59c5e7d7c5fc3b"
+}

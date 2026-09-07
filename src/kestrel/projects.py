@@ -144,6 +144,9 @@ class Projects:
             raise ProjectError("clean revision resolution is unavailable; explicitly request a complete dirty snapshot")
         if "revision" in value["source"]:
             raise ProjectError("explicit directory snapshots cannot assert an unverified Git revision")
+        if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='connections'").fetchone():
+            if self.db.execute("SELECT 1 FROM connections WHERE id=?", (value["project_id"],)).fetchone():
+                raise ProjectError("project identifier already connected")
         existing = self.db.execute("SELECT record FROM projects WHERE project_id=?", (value["project_id"],)).fetchone()
         if existing:
             raise ProjectError("project identifier already registered; use a new baseline identity")

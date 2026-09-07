@@ -85,8 +85,9 @@ def build_report(
     """Assemble the authoritative report shape from already-read records."""
     outcome = campaign["outcome"]
     evidence, validity, assurance = verify_outcome_evidence(campaign_id, campaign, reader)
-    return {"campaign_id": campaign_id, "contract_digest": campaign["digest"],
-            "brief": campaign["contract"]["brief"], "state": campaign["state"],
+    execution_only = campaign["contract"].get("contract_version") == "execution-1"
+    report = {"campaign_id": campaign_id, "contract_digest": campaign["digest"],
+            "brief": campaign["contract"].get("brief", {}), "state": campaign["state"],
             "execution": outcome["execution_status"] if outcome else "pending",
             "validity": validity,
             "finding": outcome["finding"].lower()
@@ -96,3 +97,11 @@ def build_report(
             "attempts": attempts,
             "budget_reserved": budget_reserved, "evidence": evidence,
             "limitations": list(LIMITATIONS)}
+
+    if execution_only:
+        report.update(profile="isolated-local", scientific_outcome="not_evaluated",
+                      metrics_assurance="self_reported", limitations=[
+                          "Project outputs are self-reported; no scientific evaluation",
+                          "Linux container profile; deployment verification remains separate",
+                          "Writable workspace storage is advisory; no live provider or GPU assurance"])
+    return report

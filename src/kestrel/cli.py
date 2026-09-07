@@ -15,6 +15,8 @@ from kestrel.application import Lab, demo
 from kestrel.briefings import brief
 from kestrel.conformance import run_conformance
 from kestrel.contracts import parse_json
+from kestrel.integration import initialize
+from kestrel.integration_cli import add_parsers, dispatch, readable
 from kestrel.messaging import (
     Assistant,
     CommandProcessor,
@@ -48,7 +50,7 @@ def doctor() -> dict:
     return {"version": __version__, "python": platform.python_version(), "platform": platform.platform(),
             "core": "available; run verification suite for acceptance evidence",
             "development": "trusted generated fixtures only; no adversarial isolation",
-            "isolated_local": "not enabled by developer CLI; actual runtime/audit gates required",
+            "isolated_local": "execution-only experiments require local pinned image; actual runtime/audit gates required",
             "messaging": "briefings implemented read-only; Telegram delivery not activated",
             "live_agent": "blocked: no authorized provider/credential integration",
             "gpu": "blocked: no authorized target hardware validation",
@@ -301,6 +303,7 @@ def parser() -> argparse.ArgumentParser:
     lab = commands.add_parser("lab").add_subparsers(dest="action", required=True)
     lab.add_parser("init").add_argument("path", type=Path)
     project = commands.add_parser("project").add_subparsers(dest="action", required=True)
+    add_parsers(project, commands)
     register = project.add_parser("register")
     register.add_argument("--manifest", type=Path, required=True)
     register.add_argument("--snapshot-dirty", action="store_true",
@@ -443,6 +446,8 @@ def main(argv: list[str] | None = None) -> int:
             with Lab.initialize(args.path) as lab:
                 result = {"lab": str(lab.root), "profile": "development",
                           "operator_token_file": str(lab.root / "operator.token")}
+        elif args.command == "project" and args.action == "init":
+            result = initialize(args.path)
         elif args.command == "project" and args.action == "conformance":
             if args.campaign is None and args.approval is None:
                 result = {"static_sidecar_valid": True, "manifest": load_sidecar(args.manifest),
@@ -465,7 +470,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.lab is None:
                 raise ValueError("Supply --lab PATH before the command")
             with Lab(args.lab) as lab:
-                if args.command == "project":
+                if args.command == "experiment" or (args.command == "project" and args.action in {"add", "list", "inspect", "refresh", "snapshot"}):
+                    result = dispatch(lab, args)
+                elif args.command == "project":
                     if args.action == "register":
                         result = lab.register(args.manifest, snapshot_dirty=args.snapshot_dirty)
                     else:
@@ -493,6 +500,8 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     result = {"artifacts": lab.store.import_bundle(args.bundle),
                               "assurance": "imported; not independently executed"}
+        if hasattr(args, "json") and not args.json:
+            result = readable(result)
         print(result if isinstance(result, str)
               else json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
         return 0
