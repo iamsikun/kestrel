@@ -1,52 +1,63 @@
 # Kestrel
-## An evidence-first research runtime
 
-**Status: build specification, not an implemented framework.** This kit is an original proposal for a new, standalone project. No existing research repository is a dependency or template. The working name is not a claim that package names or trademarks are available.
+Kestrel is a local research runtime with an offline synthetic campaign pilot and
+an existing-project integration workflow. It keeps original repositories separate
+from experiment workspaces and records approvals, attempts, budgets and evidence.
 
-Kestrel should turn a scientific brief into an authorized research campaign, isolate its candidate implementations, execute and evaluate work, and produce evidence-backed decisions. It should work with independent repositories and multiple coding-agent providers. It should not become a universal trainer, an unbounded autonomous shell, or a system that equates positive findings with success.
+Install the built wheel in a Python 3.12+ environment:
 
-## Start here
+```sh
+uv build --offline
+uv tool install dist/kestrel_research_runtime-0.1.0-py3-none-any.whl
+kestrel lab init /absolute/path/to/lab
+kestrel doctor
+```
 
-1. Extract this kit into an empty Git repository.
-2. Run `python3 tools/validate_pack.py` to verify this specification kit.
-3. Read `docs/BUILD.md`, especially the first-pilot boundary.
-4. Give the coding agent `prompts/BOOTSTRAP.md`.
-5. Let it decompose and implement unblocked work. Human review is for authority changes, consequential scientific choices, and deployment—not every internal task.
-6. Before live unattended use, perform the independent audit in `prompts/AUDIT.md`.
+Normal development dependency setup uses `uv sync --locked`. Experiments never
+install dependencies or pull images. The worker image must already contain Python
+3 and the project's dependencies, and be pinned by digest.
 
-The `kestrel ...` commands in the documents are **target interfaces to implement**, not commands provided by this kit. The validator checks the kit's integrity and internal references; it does not establish that the framework exists or works.
+```sh
+kestrel project init /absolute/path/to/project
+# Complete .kestrel/project.yaml and .kestrel/adapter.py.
+kestrel --lab /absolute/path/to/lab project add /absolute/path/to/project
+kestrel --lab /absolute/path/to/lab project snapshot project --preview --json
+kestrel --lab /absolute/path/to/lab project snapshot project --expect SELECTION_DIGEST --json
+kestrel --lab /absolute/path/to/lab experiment propose --snapshot SNAPSHOT_DIGEST --operation OPERATION --parameters '{"value":5}' --json
+kestrel --lab /absolute/path/to/lab experiment inspect EXPERIMENT_ID
+kestrel --lab /absolute/path/to/lab experiment approve EXPERIMENT_ID --digest CONTRACT_DIGEST --operator-token-file /absolute/path/to/lab/operator.token --json
+kestrel --lab /absolute/path/to/lab experiment run EXPERIMENT_ID --approval APPROVAL_ID
+kestrel --lab /absolute/path/to/lab experiment artifacts EXPERIMENT_ID
+kestrel --lab /absolute/path/to/lab experiment export EXPERIMENT_ID --output /absolute/path/to/packet.zip
+```
 
-## Non-negotiable boundaries
+Only synthetic public experiments are enabled in this construction profile.
+Operator approval is separate from project configuration. Source references are
+untrusted information. No command applies candidate edits to original sources.
 
-- The framework source repository contains framework code, protocols, tests, synthetic fixture generators, and documentation only.
-- User research repositories remain external. No vendoring, submodules, symlinks, or editable mounts of active user projects inside the framework source tree.
-- Lab configuration, private briefs, registry entries, runtime snapshots, results, credentials, and controller databases live outside the framework source tree.
-- Agents propose actions; a deployed controller authorizes and records actions.
-- Workers do not receive controller database access, policy-edit authority, evaluator-authoring privileges, host credentials, or final labels.
-- A valid negative or inconclusive result is a successful research outcome.
-- No method or test suite makes arbitrary scientific claims automatically true. Assurance must state exactly which checks ran and what remains unverified.
-
-## Document map
-
-| File | Purpose |
+| Capability | Availability |
 |---|---|
-| `AGENTS.md` | Rules for agents building Kestrel |
-| `docs/PRODUCT.md` | Product boundary and adoption model |
-| `docs/ARCHITECTURE.md` | Components, identities, durable execution, evidence |
-| `docs/PROTOCOL.md` | External project integration contract |
-| `docs/SECURITY.md` | Threat model and actual enforcement requirements |
-| `docs/SCIENCE.md` | Scientific validity and interpretation rules |
-| `docs/BUILD.md` | Agent-executed implementation sequence |
-| `specs/milestones.json` | Dependency-ordered delivery increments |
-| `specs/acceptance.json` | Adversarial first-pilot acceptance conditions |
-| `examples/` | Illustrative manifests and policies, not registrations |
-| `prompts/` | Implementation, resumption, and independent review prompts |
-| `docs/SOURCES.md` | Primary documentation supporting technical choices |
+| Static onboarding, explicit selection, revision history | Python API and CLI |
+| Parameters and bounded source replacements | Validated before dispatch |
+| Execution-only experiments | Existing digest-pinned Linux Docker image required |
+| Offline scientific fixture demo | `kestrel demo --offline` |
+| Legacy sidecar registration | `project register --manifest ... --snapshot-dirty` |
+| Read-only briefings | `kestrel --lab LAB brief` |
+| Live model, GPU, remote service, unattended deployment | Not enabled/certified |
 
-## First-pilot definition
+Containers use network none, read-only root and CPU/RAM/PID limits. Writable
+workspace storage uses an advisory watchdog; requests for a hard quota fail.
+Docker Desktop exercises a Linux VM and does not certify unattended native Linux
+use. Missing isolation infrastructure is an unmet verification gate.
+Execution-only artifacts are protocol checked and self-reported; they establish
+no scientific finding. The offline fixture evaluator is a separate workflow.
 
-A fresh install should complete an offline campaign against two generated external projects, isolate conflicting candidate changes, recover from an interrupted job, reject a tampered evaluator and fabricated metric, account for every attempt, and report a negative finding honestly. A live coding agent is an optional subsequent gate; lack of credentials must not block completion of the offline pilot.
+See the [synthetic onboarding tutorial](docs/PROJECT_TUTORIAL.md),
+[selected-source semantics](docs/PROJECT_INTEGRATION.md),
+[legacy usage](docs/USAGE.md), [build state](BUILD_STATE.md), and
+[decisions](docs/DECISIONS.md). `python3 tools/validate.py` checks specification
+integrity only; runtime verification requires the test suites.
 
-## Deliberately not in the first pilot
-
-Multi-tenant SaaS, Kubernetes, a new general-purpose workflow engine, a vector database, a GPU training stack, automatic trading, external publication, physical-laboratory actuation, a custom model API gateway, universal statistical inference, or self-deployment of modified controller policy.
+The [original specification README](docs/specification/README.md) is preserved
+byte-for-byte. Its relative paths refer to the repository root; use the
+[archive navigation guide](docs/specification/INDEX.md) to follow them.
