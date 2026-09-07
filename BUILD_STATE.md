@@ -1,5 +1,25 @@
 # Build state
 
+Repository orientation (2026-09-07): [docs/REPOSITORY_GUIDE.md](docs/REPOSITORY_GUIDE.md)
+maps the implemented modules, external lab layout, campaign flow, and personal-assistant
+product gaps. Linked from USAGE; no runtime, original specification, or acceptance
+changes. Inspected checkout: `a73f5387400f3d5eb9d024ee45782b98192b9e0e`.
+Fresh core check: `KESTREL_SOURCE_REVISION=a73f538 KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q --junitxml=/private/tmp/kestrel-structure-review-core-unrestricted.xml`
+— exit 0, 249 passed / 1 skipped (A28) / 12 deselected, 18.79 seconds.
+JUnit SHA256: `f19b3ab84ef403ffddf49c6c63954353c837c3b44f25a8b58975636ebe55fef6`.
+Initial tool-sandbox run could not inspect process state (`ps`: operation not permitted);
+interrupted with exit 2 after 5 failures / 48 passes, then rerun outside that sandbox.
+Initial XML: `/private/tmp/kestrel-structure-review-core.xml`, SHA256
+`c6fc2217d862b1147dfc54e5c6a55aa348d06df32070f40961c75be483c8e2d3`.
+`python3 tools/validate_pack.py`, `.venv/bin/python -m kestrel doctor`,
+`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`,
+documentation link checks, and `git diff --check`: exit 0. Install, isolation,
+external audit, and release accounting were not rerun for this documentation task;
+their prior evidence and all blockers below remain unchanged. The new core XML
+uses the abbreviated source revision and is orientation evidence, not a new release
+certification. Next implementation proposal is the guide's general isolated synthetic
+campaign slice; the separate independent deployment review remains outstanding.
+
 Follow-up review and repairs complete on `build/first-pilot`. Tested implementation:
 `ac9879e9a7725558468112f9f3950c687cf0a84d` (repairs in `bbc40cd` and `ac9879e`).
 Subsequent verification documentation changes no runtime code. Review assessment:

@@ -1,5 +1,8 @@
 # Running the implemented pilot
 
+For a consolidated code map, current capability limits, and product gaps, read
+[REPOSITORY_GUIDE.md](REPOSITORY_GUIDE.md).
+
 The original README and build specifications are preserved byte-for-byte. The
 implementation is a developer pilot; read `BUILD_STATE.md` for the latest evidence
 and remaining gates. Registering an arbitrary project does not grant permission
