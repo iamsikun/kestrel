@@ -34,7 +34,8 @@ sys.meta_path.insert(0, DenyHeavyDependencies())
 modules = ['kestrel', 'kestrel.application', 'kestrel.controller', 'kestrel.contracts',
            'kestrel.projects', 'kestrel.artifacts', 'kestrel.runners',
            'kestrel.evaluation', 'kestrel.agents', 'kestrel.agent_execution',
-           'kestrel.provider_records', 'kestrel.conformance', 'kestrel.cli']
+           'kestrel.provider_records', 'kestrel.conformance', 'kestrel.cli',
+           'kestrel.client', 'kestrel.integration', 'kestrel.experiments']
 locations = {name: str(pathlib.Path(importlib.import_module(name).__file__).resolve())
              for name in modules}
 environment = pathlib.Path(sys.prefix).resolve()
@@ -260,5 +261,62 @@ def test_built_wheel_installs_cleanly_and_runs_actual_external_offline_demo(tmp_
     assert packet.is_file()
     evidence["demo_sha256"] = hashlib.sha256((demo_root / "demo.json").read_bytes()).hexdigest()
     evidence["evidence_packet_sha256"] = hashlib.sha256(packet.read_bytes()).hexdigest()
+    # Installed onboarding operates only on newly generated external synthetic data.
+    integration_image = os.environ.get("KESTREL_INTEGRATION_IMAGE")
+    if integration_image:
+        docker = shutil.which("docker")
+        assert docker, "Installed Docker gate requires an existing Docker CLI"
+        environment["PATH"] += os.pathsep + str(Path(docker).parent)
+        if "HOME" in os.environ:
+            environment["HOME"] = os.environ["HOME"]  # Docker controller context; never mounted into workers.
+    integration_sources = temporary / "integration-sources"
+    run_command([str(installed_python), "-I", "-m", "kestrel.integration_examples",
+                 str(integration_sources), "--image", integration_image or "python@sha256:" + "1" * 64], "generate-integration")
+    integration_lab = temporary / "integration-lab"
+    def console(arguments, name):
+        return run_command([str(installed_python), "-I", str(launcher), str(installed_console),
+                            *arguments], name)
+    console(["lab", "init", str(integration_lab)], "integration-lab-init")
+    prefix = ["--lab", str(integration_lab)]
+    for project in ("arithmetic", "strings"):
+        console([*prefix, "project", "add", str(integration_sources / project), "--json"],
+                f"integration-add-{project}")
+        preview = json.loads(console([*prefix, "project", "snapshot", project, "--preview", "--json"],
+                                     f"integration-preview-{project}").stdout)
+        assert not preview["blockers"]
+        snapshot = json.loads(console([*prefix, "project", "snapshot", project, "--expect",
+                                       preview["selection_digest"], "--json"], f"integration-snapshot-{project}").stdout)
+        operation = "calculate" if project == "arithmetic" else "repeat"
+        program = integration_sources / project / "program.py"
+        original = program.read_bytes()
+        edits_path = temporary / f"{project}-edits.json"
+        edits_path.write_text(json.dumps([{"path": "program.py", "original": hashlib.sha256(original).hexdigest(),
+                                          "content": original.decode().replace("FACTOR = 2", "FACTOR = 4")}]))
+        proposal = json.loads(console([*prefix, "experiment", "propose", "--edits", str(edits_path), "--snapshot", snapshot["digest"],
+                                       "--operation", operation, "--parameters", '{"value":5}', "--json"],
+                                      f"integration-propose-{project}").stdout)
+        assert proposal["budget_charged"]["attempts"] == 0
+        if integration_image:
+            approval = json.loads(console([*prefix, "experiment", "approve", proposal["experiment_id"],
+                "--digest", proposal["digest"], "--operator-token-file", str(integration_lab / "operator.token"),
+                "--json"], f"integration-approve-{project}").stdout)
+            result = json.loads(console([*prefix, "experiment", "run", proposal["experiment_id"],
+                "--approval", approval["approval_id"], "--json"], f"integration-run-{project}").stdout)
+            assert result["outcome"]["execution_status"] == "succeeded"
+            assert result["scientific_outcome"] == "not_evaluated"
+            assert program.read_bytes() == original
+            console([*prefix, "experiment", "export", proposal["experiment_id"], "--output",
+                     str(temporary / f"{project}-experiment.zip"), "--json"], f"integration-export-{project}")
+            # Cleanup only this installed test's confirmed stopped containers.
+            run_command([str(installed_python), "-I", "-c",
+                "from kestrel.client import Client; import sys; "
+                "c=Client(sys.argv[1]); s=c.experiments; i=sys.argv[2]; d=s._driver(s._contract(i)); "
+                "[d.remove(d._name(a['backend_label'])) for a in c.lab.controller.attempts(i)]; c.lab.close()",
+                str(integration_lab), proposal["experiment_id"]], f"integration-cleanup-{project}")
+        else:
+            console([*prefix, "experiment", "cancel", proposal["experiment_id"], "--json"],
+                    f"integration-cancel-{project}")
+    listed = json.loads(console([*prefix, "project", "list", "--json"], "integration-list").stdout)
+    assert len(listed) == 2
     evidence["result"] = "passed"
     evidence_path.write_text(json.dumps(evidence, indent=2, sort_keys=True))

@@ -187,3 +187,87 @@ this revision has an author who cannot also be its independent review.
 - Remote approval remains optional and independent of useful conversational
   assistance and literature discovery. No service, schedule, credential, runtime
   permission, provider integration, or host configuration changed in this task.
+
+## 2026-09-07 — Telegram implementation plan (planning only)
+
+- The operator selected Telegram and explicitly prohibited implementation in this
+  task. [proposals/TELEGRAM_IMPLEMENTATION_PLAN.md](proposals/TELEGRAM_IMPLEMENTATION_PLAN.md)
+  specializes the messaging proposal into T0–T5: read-only briefings, durable
+  projection, delivery lifecycle, Telegram adapter, authorized activation, and
+  limited typed replies. No runtime or service setup is authorized by the plan.
+- Plan one bot, private operator chat, and scoped lab, with plain-text deterministic
+  briefs and no model dependency. Use polling for enrollment and later commands;
+  keep remote execution approval, attachments, other transports and literature
+  outside the first messaging release.
+- Start with dedicated read-only interfaces because existing Lab/store constructors
+  initialize writable state. Share verified report semantics; label charged
+  reservations accurately. Preserve separate source and transport/attention state.
+- Explicitly handle ambiguous sends, Telegram inbound retention and idle cursor
+  resets, stale revision acknowledgements, bounded caps, and credential rotation.
+  Real egress requires reviewed operator grants and a measured identity boundary;
+  the development campaign token cannot enable it. Bot credentials remain gateway
+  authority and are not claimed to enforce recipient restrictions themselves.
+
+## 2026-09-07 — Telegram messaging implementation (T0: read-only briefings)
+
+Implementation was authorized for local development only. Creating a bot,
+obtaining credentials, sending a message, installing a host service, deploying a
+controller, enabling a live provider, expanding permissions, and pushing all
+remain unauthorized and undone.
+
+- One verified report interpretation now lives in `reporting.py`. `Lab.report`
+  delegates to `build_report`, so the messaging surface cannot present a
+  conclusion the authoritative report would refuse. Extraction is behaviour
+  preserving: the existing tamper, attribution, invalidation and outcome-label
+  regressions pass unchanged, including the in-place assurance assignment that
+  precedes an evidence downgrade and the rule that a substantive finding is
+  rendered only when assurance is `independently_recomputed`.
+- `sources.py` opens the controller and evidence databases with `mode=ro` plus
+  `PRAGMA query_only`, validates the controller `user_version` and the evidence
+  table set, and issues only bounded `SELECT`s. It never reuses `Lab`,
+  `Controller` or `Artifacts` constructors, which create directories, run DDL,
+  set write pragmas and open a metadata write transaction. Operator credential
+  metadata and the memory table are not observable through it at all; raw SQL
+  reads would bypass the controller's memory authorization rules.
+- This is an application-level boundary. A read-only connection to a live WAL
+  database still maps the shared-memory index, so the `-shm` file's modification
+  time changes even though no database content does. Tests therefore assert
+  unchanged logical content rather than unchanged sidecar timestamps, and actual
+  write denial remains a deployment-profile property, not a Python property.
+- Source identity binds to the first append-only event row rather than a path,
+  inode or modification time, because the controller has no durable source ID
+  and triggers forbid updating or deleting events. Feed cutoffs are a per-store
+  vector; no global snapshot transaction is claimed.
+- A briefing renders only allowlisted typed fields with a named derivation.
+  Reservations are stated as charged, never as measured runtime or cost. Signals
+  with no producer — host telemetry, monetary cost, reading and acknowledgement,
+  literature coverage — are listed as unavailable instead of zero. A campaign
+  whose evidence fails verification becomes a bounded integrity item; it never
+  keeps a previously green label.
+- Messaging acceptance conditions live in the separate
+  `specs/messaging-acceptance.json` and are emitted under a distinct JUnit
+  property. The pinned first-pilot inventory, its manifest and `validate_pack`
+  are unchanged; an unknown ID under the pinned `acceptance` property would
+  otherwise become a release-gate integrity diagnostic.
+
+## 2026-09-07 — existing-project integration
+
+- Add selected-source snapshots as specified in PROJECT_INTEGRATION.md before
+  implementation, preserving the complete-directory mode and pinned requirements.
+- Connections identify source locations; revisions identify canonical contracts;
+  snapshots bind revisions and selected bytes. No Git command or setup hook runs.
+- Execution-only experiments share the controller ledger and operator approvals.
+  They provide protocol-checked, self-reported project output, with no scientific
+  evaluation claim. No live provider, implicit image pull, host fallback or deploy.
+
+- Preserve the original validator itself as a pinned specification artifact. The
+  new `tools/validate.py` wrapper changes only presentation: it removes the original
+  kit's fixed `framework_implemented` declaration and emits `runtime_verification:
+  not_run`. All original 46 requirements and original file hashes are retained.
+- Preserve input invalidation as a launch blocker, but use the immutable controller
+  contract for cancellation even when evidence was invalidated. A historical stop
+  receipt does not restore validity. Both pre-launch and running-worker regressions
+  cover this distinction.
+- Keep execution-only outcome interpretation compatible with shared reports and
+  briefings. Expose actual process success separately from protocol validity;
+  scientific outcome stays `not_evaluated`, including a successful self-report.

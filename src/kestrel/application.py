@@ -24,7 +24,6 @@ from kestrel.contracts import (
     TaskSpec,
     canonical,
     digest,
-    outcome_matches,
     parse_json,
     validate_response,
 )
@@ -39,6 +38,7 @@ from kestrel.evaluation import (
 )
 from kestrel.fixtures import WORKERS, generate, is_trusted_workspace
 from kestrel.projects import Projects
+from kestrel.reporting import build_report
 from kestrel.runners import DevelopmentDriver, DriverError, JobSpec
 
 
@@ -381,48 +381,9 @@ class Lab:
 
     def report(self, campaign_id: str) -> dict:
         campaign = self.controller.campaign(campaign_id)
-        outcome = campaign["outcome"]
-        evidence = []
-        validity = "incomplete"
-        assurance = "unverified"
-        if outcome:
-            for identity in outcome["evidence_ids"]:
-                record = self.store.get(identity)
-                analysis = parse_json(self.store.read(identity))
-                # Valid, independently recomputed bytes are not this campaign's
-                # evidence unless they are actually attributable to it. Borrowed
-                # analysis from another campaign cannot certify this one.
-                if type(analysis) is not dict:
-                    raise ValueError("Outcome evidence must contain a structured outcome")
-                attributable = (analysis.get("campaign_id") == campaign_id
-                                and campaign["digest"] in record["lineage"])
-                consistent = outcome_matches(analysis, execution=outcome["execution_status"],
-                                             validity=outcome["protocol_status"], finding=outcome["finding"])
-                analysis["assurance"] = record["assurance"]
-                if record["status"] != "valid" or not attributable or not consistent:
-                    analysis = {**analysis, "validity": "invalid", "finding": "inconclusive",
-                                "assurance": "unverified"}
-                evidence.append({"digest": identity, "status": record["status"],
-                                 "assurance": record["assurance"], "analysis": analysis,
-                                 "attributable": attributable, "consistent": consistent})
-            validity = (outcome["protocol_status"]
-                        if all(e["status"] == "valid" and e["attributable"] and e["consistent"] for e in evidence)
-                        else "invalid")
-            if validity == "valid":
-                assurance = ("independently_recomputed" if all(e["assurance"] == "independently_recomputed" for e in evidence)
-                             else "imported" if any(e["assurance"] == "imported" for e in evidence)
-                             else "traceable")
-        return {"campaign_id": campaign_id, "contract_digest": campaign["digest"],
-                "brief": campaign["contract"]["brief"], "state": campaign["state"],
-                "execution": outcome["execution_status"] if outcome else "pending", "validity": validity,
-                "finding": outcome["finding"].lower() if outcome and assurance == "independently_recomputed" else "inconclusive",
-                "assurance": assurance,
-                "profile": "development", "adversarial_isolation": False,
-                "attempts": self.controller.attempts(campaign_id),
-                "budget_reserved": self.controller.budget_used(campaign_id), "evidence": evidence,
-                "limitations": ["Trusted synthetic fixtures only; no adversarial isolation",
-                                "Finite-domain oracle; no population inference",
-                                "No live provider, GPU or deployed-controller assurance"]}
+        return build_report(campaign_id, campaign, self.store,
+                            self.controller.attempts(campaign_id),
+                            self.controller.budget_used(campaign_id))
 
     def cancel(self, campaign_id: str) -> dict:
         for task in self.controller.tasks(campaign_id):

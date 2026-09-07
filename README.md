@@ -1,13 +1,15 @@
 # Kestrel
 
 Kestrel runs bounded research experiments and records the evidence behind their
-results. **The current release is an offline developer pilot:** you can run two
-synthetic experiments, inspect their attempts and findings, and export their
-evidence. It uses a deterministic mock coding agent.
+results. The offline developer demo runs two synthetic scientific comparisons
+using a deterministic mock coding agent. The project-integration workflow runs
+explicitly proposed operations and bounded source edits in isolated copies of
+connected synthetic projects.
 
-**You cannot yet give it an arbitrary research task or connect a live Codex/Claude
-agent.** Registering your own project does not enable running it. General project
-execution, live providers, and the broader personal assistant loop are unfinished.
+You cannot yet give it an arbitrary research brief or connect a live Codex/Claude
+agent. Registration does not grant execution permission: project experiments need
+an exact operator approval and an available digest-pinned Linux Docker image.
+The broader personal assistant loop remains unfinished.
 
 ## Run it now
 
@@ -103,10 +105,62 @@ uv run --offline kestrel campaign --help
 uv run --offline kestrel campaign approve --help
 ```
 
+## Connect projects and run isolated experiments
+
+Install the built wheel in a Python 3.12+ environment:
+
+```sh
+uv build --offline
+uv tool install dist/kestrel_research_runtime-0.1.0-py3-none-any.whl
+kestrel lab init /absolute/path/to/lab
+kestrel doctor
+```
+
+Normal development dependency setup uses `uv sync --locked`. Experiments never
+install dependencies or pull images. The worker image must already contain Python
+3 and the project's dependencies, and be pinned by digest.
+
+```sh
+kestrel project init /absolute/path/to/project
+# Complete .kestrel/project.yaml and .kestrel/adapter.py.
+kestrel --lab /absolute/path/to/lab project add /absolute/path/to/project
+kestrel --lab /absolute/path/to/lab project snapshot project --preview --json
+kestrel --lab /absolute/path/to/lab project snapshot project --expect SELECTION_DIGEST --json
+kestrel --lab /absolute/path/to/lab experiment propose --snapshot SNAPSHOT_DIGEST --operation OPERATION --parameters '{"value":5}' --json
+kestrel --lab /absolute/path/to/lab experiment inspect EXPERIMENT_ID
+kestrel --lab /absolute/path/to/lab experiment approve EXPERIMENT_ID --digest CONTRACT_DIGEST --operator-token-file /absolute/path/to/lab/operator.token --json
+kestrel --lab /absolute/path/to/lab experiment run EXPERIMENT_ID --approval APPROVAL_ID
+kestrel --lab /absolute/path/to/lab experiment artifacts EXPERIMENT_ID
+kestrel --lab /absolute/path/to/lab experiment export EXPERIMENT_ID --output /absolute/path/to/packet.zip
+```
+
+Only synthetic public experiments are enabled in this construction profile.
+Operator approval is separate from project configuration. Source references are
+untrusted information. No command applies candidate edits to original sources.
+
+| Capability | Availability |
+|---|---|
+| Static onboarding, explicit selection, revision history | Python API and CLI |
+| Parameters and bounded source replacements | Validated before dispatch |
+| Execution-only experiments | Existing digest-pinned Linux Docker image required |
+| Offline scientific fixture demo | `kestrel demo --offline` |
+| Legacy sidecar registration | `project register --manifest ... --snapshot-dirty` |
+| Read-only briefings | `kestrel --lab LAB brief` |
+| Live model, GPU, remote service, unattended deployment | Not enabled/certified |
+
+Containers use network none, read-only root and CPU/RAM/PID limits. Writable
+workspace storage uses an advisory watchdog; requests for a hard quota fail.
+Docker Desktop exercises a Linux VM and does not certify unattended native Linux
+use. Missing isolation infrastructure is an unmet verification gate.
+Execution-only artifacts are protocol checked and self-reported; they establish
+no scientific finding. The offline fixture evaluator is a separate workflow.
+
 ## Where to go next
 
 | Document | Use it for |
 |---|---|
+| [Project tutorial](docs/PROJECT_TUTORIAL.md) | Two-project onboarding, parameters, bounded edits, and isolated execution |
+| [Source selection](docs/PROJECT_INTEGRATION.md) | Snapshot rules and integrity semantics |
 | [Usage](docs/USAGE.md) | Manual fixture campaigns, recovery, and verification commands |
 | [Repository guide](docs/REPOSITORY_GUIDE.md) | Code map, runtime layout, and capability gaps |
 | [Build state](BUILD_STATE.md) | Current evidence and remaining blockers |
@@ -114,8 +168,11 @@ uv run --offline kestrel campaign approve --help
 | [Product design](docs/PRODUCT.md) | The intended personal research assistant |
 | [Security](docs/SECURITY.md) and [science](docs/SCIENCE.md) | Execution boundaries and rules for scientific conclusions |
 
-The original build-kit README is preserved at
-[docs/specification/README.md](docs/specification/README.md). Original design
-documents and `examples/` describe intended interfaces, some of which remain
-unimplemented. `tools/validate_pack.py` checks the original specification payloads;
-its `framework_implemented: false` field is not a check of today's runtime.
+The [original specification README](docs/specification/README.md) is preserved
+byte-for-byte. Its relative paths refer to the repository root; use the
+[archive navigation guide](docs/specification/INDEX.md) to follow them.
+
+`python3 tools/validate.py` checks specification integrity and explicitly reports
+that runtime verification was not run. The original `tools/validate_pack.py` is
+also preserved; its fixed `framework_implemented: false` field describes the kit,
+not the current runtime.

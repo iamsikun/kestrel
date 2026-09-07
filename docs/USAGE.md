@@ -8,7 +8,9 @@ is archived byte-for-byte at [specification/README.md](specification/README.md);
 the original build specifications remain preserved. The
 implementation is a developer pilot; read `BUILD_STATE.md` for the latest evidence
 and remaining gates. Registering an arbitrary project does not grant permission
-to execute it. The developer CLI executes only exact generated fixture programs.
+to execute it. The `campaign` commands execute exact generated fixture programs. The separate
+`project add` and `experiment` workflow supports approved synthetic project operations
+in isolated Docker workers; see the [project tutorial](PROJECT_TUTORIAL.md).
 
 ## Setup and offline demo
 
@@ -105,9 +107,9 @@ kestrel --lab /absolute/new/lab evidence export CAMPAIGN_ID --output /external/p
 ```
 
 Campaign proposal currently supplies the built-in finite numerical/counterexample
-protocol for generated fixture sources. General sidecar registration, the typed
-controller and Docker driver are usable components; a general isolated campaign
-application and separately operated deployment are not enabled by this CLI.
+protocol for generated fixture sources. General sidecar registration remains available. The separate execution-only
+`experiment` workflow uses the controller and Docker driver for connected projects;
+it does not supply independent scientific evaluation or a deployed service.
 
 Active conformance executes or reuses the approved tiny fixture campaign and checks
 its real receipts, artifact identities, response schema, failure handling and

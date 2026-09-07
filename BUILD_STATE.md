@@ -1,5 +1,98 @@
 # Build state
 
+PR #3 conflict resolution (2026-09-07): merged `origin/main` at `f467743`.
+Combined the upstream runnable fixture quickstart with project integration, retained
+upstream quickstart evidence, and clarified outdated execution-limit statements in
+USAGE and the historical repository guide. Runtime, tests and dependencies are
+unchanged from the PR head. `python3 tools/validate.py`, Ruff, documentation
+links/anchors/fences, exact upstream quickstart preservation, and `git diff --check`
+passed (exit 0). `pytest tests/test_integration.py -m 'not isolation' -q` passed:
+22 passed / 6 deselected, exit 0. Receipt: `/private/tmp/kestrel-conflict-resolution.json`;
+JUnit: `/private/tmp/kestrel-conflict-resolution-tests.xml`, SHA256
+`8b3e4568b7bb7f89a50c8b0e2bf65b877e79636839c6fc15d81188c75d3b0484`.
+Full core/install/Docker suites were not repeated for this documentation-only merge;
+the previously recorded runtime evidence and remaining deployment gates stand.
+Next action: push the merge commit and confirm GitHub reports PR #3 mergeable.
+
+Existing-project integration implemented and verified on `feat/project-integration`.
+Worktree: `/private/tmp/kestrel-project-integration`, based on committed `3c47dc3`.
+Verified runtime revision: `2805e3b8cfb77a202ad8c874454241892542ea06`. Later build-state documentation
+changes no runtime code. The original checkout was never switched or edited by this
+work; its independently advancing reporting work remains preserved.
+
+Implemented: strict `.kestrel/project.yaml`, exclusive scaffolding, stable connections
+and immutable contract revisions; selected-source preview/expected-digest snapshots;
+parameter schemas and bounded source replacements; local Python client and CLI;
+worker-only helper and two ordinary synthetic project examples; execution-only
+contracts on the existing approval/budget/attempt/fencing ledger; actual Docker
+execution, recovery, cancellation and attributable evidence export. Cancellation
+remains available after input invalidation, while launch is refused.
+Legacy complete-directory snapshots and fixture commands remain supported.
+
+Installation/workflow: [README](README.md), [tutorial](docs/PROJECT_TUTORIAL.md),
+[source semantics](docs/PROJECT_INTEGRATION.md). Original README bytes are archived
+at `docs/specification/README.md`: 4034 bytes, SHA256
+`2aab712ff1d155cc0b45ccfece118ec76295c291562f84913faffc57e11a1037`.
+The inventory diff changes only that path. Original validator bytes are unchanged;
+`tools/validate.py` distinguishes kit integrity from runtime verification.
+
+Final serial verification (2026-09-07), every command exit 0:
+
+- Ruff: `ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py tools/validate.py`.
+- Specification: `python tools/validate.py`, 20 files and all 46 original requirements.
+- Whitespace: `git diff --check`.
+- Core/state-machine/adversarial: `python -m pytest -m 'not isolation and not install' -q`:
+  **296 passed, 1 skipped (A28 actual provider captures), 18 deselected**.
+- Actual Docker VM: `KESTREL_RUN_ISOLATION=1 python -m pytest -m isolation -q`:
+  **17 passed, 298 deselected**. Includes existing egress/filesystem/resource tests
+  plus two-project experiments, malformed outputs, traversal, timeout, cancellation
+  after invalidation, and reopened-controller interrupted-run recovery.
+- Wheel: `uv build --offline`; no new dependencies or implicit image pull.
+- Clean installation: `python -m pytest tests/test_install.py -q`: **1 passed**.
+  Empty temporary environment, offline dependency wheelhouse, installed fixture demo,
+  installed onboarding/proposals, both actual Docker adapter executions with parameters
+  and replacements, unchanged source assertions, export, and stopped-container cleanup.
+
+Full argv, exit statuses, source revision, logs and hashes are in
+`/private/tmp/kestrel-integration-evidence/checks.json`, `verify.py`, and `hashes.json`.
+That script records the exact environment: PYTHONPATH points to this worktree;
+Docker uses existing public `ghcr.io/astral-sh/uv@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca`;
+clean installation uses `/private/tmp/kestrel-wheelhouse`. Python/Ruff come from
+the pre-existing development venv, without reinstalling the user's tool.
+JUnit scope/profile metadata retain default `core`/`development`; the commands and
+actual Docker tests document the measured VM execution. These receipts are not a
+native Linux deployment or release-readiness certification.
+
+Evidence SHA256:
+- `core-2805.xml`: `8010e9e65c742c9f53365f1fd54291b0b70c78fcd6dcff7d3f6aa4c40576c1ef`
+- `isolation-2805.xml`: `b50363860a9d51ead9af7cf80802f008161342d8ad58a0eb580e39c1a6a9426d`
+- `install-2805.xml`: `6c75cecdf36084327257eabb12d63e4b5d055b12be0cc8d684a8410f7b88c837`
+- `install-final.json`: `144b692edc9cced149a8547d00be8053e60f081f72977abf36f798d962d95cd1`
+- Wheel: `27c8ca7a205ad01f63e265b24d3210b06e8d36e5e94f2a3b0fa6639025f3054e`
+
+Earlier failures retained honestly: initial sandbox core check was interrupted
+(exit 2, 5 failures/48 passes) because process inspection could not confirm fixture
+termination. Approved-access reruns passed. Initial new Docker test exposed job-ID
+mapping/pending-start handling; repaired, all later gates passed, and its leftover
+confirmed-stopped container was removed. Initial uv build needed approved cache
+access. No unavailable or skipped gate is counted as passing.
+
+Remaining gates: A28 actual sanitized provider captures; A30 authorized live
+integration; A31 credential boundary; A43 target GPU; independent target deployment
+review and native Linux isolation verification. No live provider, paid service,
+host configuration, user-data campaign, push, publication, current-tool reinstall,
+`llm-lab` enrollment or deployment occurred. The tests use synthetic public data
+and network-free workers. Writable workspace storage remains advisory; hard quota
+requests fail before launch. Project outputs remain self-reported and scientific
+outcome is explicitly not evaluated.
+
+Implementation task complete. Exact next unblocked action: independently review
+this branch and verify the evidence hashes before any separately authorized merge
+or deployment. Temporary worktree/evidence paths are subject to OS cleanup; commits
+are retained in the original repository. Prior build history remains in Git.
+
+Retained upstream quickstart evidence:
+
 README quickstart (2026-09-07): root README now documents the implemented demo,
 result inspection/export, and current agent limits. USAGE includes a runnable
 manual fixture campaign. Original README archived at `docs/specification/README.md`;
@@ -14,89 +107,5 @@ hashes: `/private/tmp/kestrel-readme-check-2ys6g4j1/receipt.json`, SHA256
 Pack validator, unchanged-requirement/manifest-relocation checks, documentation
 links/anchors, and `git diff --check`: exit 0. Full runtime suites, clean package
 install, isolation, provider and GPU gates were not rerun for these docs; prior
-evidence and blockers below remain. Next product work remains the general isolated
-synthetic campaign path; README changes do not enable it or grant deployment.
-
-Messaging design consolidation (2026-09-07):
-[docs/proposals/MESSAGING.md](docs/proposals/MESSAGING.md) now covers assistant
-behaviors, source-aware projection/inbox, approved-envelope delivery, attention
-and authorization boundaries, researched transport candidates, and proposed N0–N6
-increments with 20 acceptance conditions. Proposal only; no runtime or pinned
-specification changes. Consequential assumptions are in docs/DECISIONS.md.
-Proposal SHA256: `b56721a3bc252f4b6bf1519f6dc91ceea7224ef13f84a7d1680c771901d31912`.
-Check receipt and retained original draft: `/private/tmp/kestrel-messaging-review/`.
-Pack integrity, Ruff, local document links and whitespace checks: exit 0.
-Runtime unit/integration/state-machine/adversarial, install, isolation, live
-transport, and deployment gates were not run for this documentation-only task;
-prior evidence and blockers below remain unchanged. Temporary evidence may be
-cleaned by the OS. Next unblocked messaging action: implement N0 deterministic
-local briefing from verified records with synthetic offline tests. This proposal
-does not authorize remote delivery, host service setup, or deployment.
-
-Repository orientation (2026-09-07): [docs/REPOSITORY_GUIDE.md](docs/REPOSITORY_GUIDE.md)
-maps the implemented modules, external lab layout, campaign flow, and personal-assistant
-product gaps. Linked from USAGE; no runtime, original specification, or acceptance
-changes. Inspected checkout: `a73f5387400f3d5eb9d024ee45782b98192b9e0e`.
-Fresh core check: `KESTREL_SOURCE_REVISION=a73f538 KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q --junitxml=/private/tmp/kestrel-structure-review-core-unrestricted.xml`
-— exit 0, 249 passed / 1 skipped (A28) / 12 deselected, 18.79 seconds.
-JUnit SHA256: `f19b3ab84ef403ffddf49c6c63954353c837c3b44f25a8b58975636ebe55fef6`.
-Initial tool-sandbox run could not inspect process state (`ps`: operation not permitted);
-interrupted with exit 2 after 5 failures / 48 passes, then rerun outside that sandbox.
-Initial XML: `/private/tmp/kestrel-structure-review-core.xml`, SHA256
-`c6fc2217d862b1147dfc54e5c6a55aa348d06df32070f40961c75be483c8e2d3`.
-`python3 tools/validate_pack.py`, `.venv/bin/python -m kestrel doctor`,
-`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`,
-documentation link checks, and `git diff --check`: exit 0. Install, isolation,
-external audit, and release accounting were not rerun for this documentation task;
-their prior evidence and all blockers below remain unchanged. The new core XML
-uses the abbreviated source revision and is orientation evidence, not a new release
-certification. Next implementation proposal is the guide's general isolated synthetic
-campaign slice; the separate independent deployment review remains outstanding.
-
-Follow-up review and repairs complete on `build/first-pilot`. Tested implementation:
-`ac9879e9a7725558468112f9f3950c687cf0a84d` (repairs in `bbc40cd` and `ac9879e`).
-Subsequent verification documentation changes no runtime code. Review assessment:
-[docs/REVIEW_FOLLOWUP.md](docs/REVIEW_FOLLOWUP.md); decisions:
-[docs/DECISIONS.md](docs/DECISIONS.md).
-
-The deterministic offline pilot runs two generated external synthetic projects,
-six charged attempts (two offline agents, four scientific workers), zero provider
-calls, and two honest valid `not_supported` findings. Execution/evidence boundaries,
-ledger state/fences/budgets, protected evaluator, artifacts and CLI exist. The
-Docker driver is tested separately; general isolated campaigns are not wired to Lab.
-
-Remaining review defects repaired: valid completion resolves registered evidence
-and checks its attribution/labels; reports reject inconsistent legacy outcomes;
-Lab registers typed amendment contracts on run/cancel without inheriting approval;
-offline recovery binds provider identity/version; memory logs the actual grant reason.
-Six selected counterexamples failed before repair. No pinned specification changed.
-
-Exact-revision verification (2026-09-07), commands and hashes in
-[docs/VERIFICATION.md](docs/VERIFICATION.md):
-
-- Core unit/integration/adversarial/state-machine: 249 passed, 1 skipped (A28),
-  12 separately executed tests deselected; exit 0.
-- Offline wheel build and clean install/installed demo: passed; 1 install test, exit 0.
-- Actual Docker Linux VM isolation: 11 passed, exit 0; no remaining test containers.
-- Claude's unchanged retained audit probes against the source archive: 83 passed, exit 0.
-- Ruff, original pack integrity (20 files/46 requirements), diff whitespace: exit 0.
-- Release accounting: 42 passed / 4 blocked, exit 1; no integrity issues;
-  all composite readiness flags false and deployment.authorized false.
-
-Evidence: `/private/tmp/kestrel-verification-ac9879e/`, including four JUnit records,
-install logs, demo, both exported packets, original audit and SHA256 manifest.
-Wheel SHA256: `e33177f6c7f4cdb14a4c512ce5564d3843707bea5621a709a79e2625f82eac79`.
-Temporary evidence is subject to system cleanup. Prior runs certify prior code only.
-
-Blockers unchanged: A28 actual sanitized provider captures; A30 authorized live
-integration; A31 actual credential boundary is unauthorized, unimplemented and
-untested; A43 target GPU. VM measurements do not certify a native Linux deployment.
-No target service audit, user-namespace remapping or pinned seccomp/AppArmor profile
-is claimed. Finite-reader timing and writable-workspace limits are advisory.
-
-Next unblocked action for handoff: independently review `bbc40cd` and `ac9879e`,
-starting with `docs/REVIEW_FOLLOWUP.md`, and verify the retained evidence hashes.
-This repair author cannot provide the sole independent deployment review. A28 can
-next run offline when provenance-bearing public-synthetic captures are supplied;
-A30/A31/GPU work needs the stated authorization/resources. No live calls, pushes,
-deployment, host-service changes or research repository access occurred.
+evidence and blockers below remain. This is historical documentation evidence from before project integration;
+the quickstart alone did not enable general execution or grant deployment.

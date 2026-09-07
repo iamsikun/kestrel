@@ -1,0 +1,29 @@
+{
+  "spec_version": "0.1",
+  "status": "proposed_messaging_requirements_not_implementation_results",
+  "note": "Separate from the integrity-pinned first-pilot inventory in specs/acceptance.json. These IDs are never emitted under the JUnit 'acceptance' property; tests carry them under 'messaging_acceptance' via the pytest 'messaging' marker.",
+  "source": "docs/proposals/MESSAGING.md section 12",
+  "implemented_slices": ["T0"],
+  "tests": [
+    {"id": "N-A01", "slice": "T2", "gate": "core", "requirement": "Worker files, adapter outputs, and model proposals cannot directly send, choose destinations, or write the authoritative inbox/outbox. Only validated source conditions generate intents."},
+    {"id": "N-A02", "slice": "T2", "gate": "core", "requirement": "Above-ceiling content, including identifiers and hashes, never reaches an external sink; metadata fallback needs its own explicit permission."},
+    {"id": "N-A03", "slice": "T1", "gate": "core", "requirement": "Killing delivery/projection leaves a fixed synthetic campaign's scientific outcomes, provenance, selection history, and reservations unchanged."},
+    {"id": "N-A04", "slice": "T2", "gate": "core", "requirement": "Replay produces one logical intent. Crash at every send/receipt boundary yields the documented retry or uncertainty state; no unqualified exactly-once assertion."},
+    {"id": "N-A05", "slice": "T4", "gate": "deployment", "requirement": "Under the deployed profile the dispatcher cannot read raw controller/evidence DBs or mutate source state/artifacts; tested denial under actual OS identities, not just mocked permissions."},
+    {"id": "N-A06", "slice": "T2", "gate": "core", "requirement": "Seeded secrets, paths, malicious markup/commands, oversized strings, and credential references cannot escape typed rendering into externally released bytes."},
+    {"id": "N-A07", "slice": "T5", "gate": "core", "requirement": "Forged or legitimate ordinary chat replies cannot approve work, expand budgets, edit policy, or rewrite frozen assumptions; only scoped attention/request behavior is possible."},
+    {"id": "N-A08", "slice": "T2", "gate": "core", "requirement": "A synthetic event storm remains within byte/rate/daily caps including retries and summaries; all grouped/suppressed items retain reason codes in the local ledger."},
+    {"id": "N-A09", "slice": "T0", "gate": "core", "requirement": "Every factual field/number resolves to a source or named deterministic derivation and cutoff; estimates and missing telemetry are labelled. Valid negatives remain successful research outcomes."},
+    {"id": "N-A10", "slice": "T1", "gate": "core", "requirement": "With messaging disabled, the original offline pilot behavior and scientific outputs remain unchanged; no new network calls or provider imports."},
+    {"id": "N-A11", "slice": "T2", "gate": "core", "requirement": "Recovery reports projection/delivery gaps. A dispatcher-only deployment explicitly cannot detect its own outage in real time."},
+    {"id": "N-A12", "slice": "T3", "gate": "core", "requirement": "Unauthorized host, recipient, redirect, DNS/address change, or local-file target fails closed under the chosen enforcement profile."},
+    {"id": "N-A13", "slice": "T1", "gate": "core", "requirement": "Restart, DST folds/gaps, clock changes, and missed days create the specified single catch-up briefing without losing interval coverage."},
+    {"id": "N-A14", "slice": "T0", "gate": "core", "requirement": "Invalidation after a queued/sent success supersedes the queued success or produces a linked correction; unresolved cross-store versions never certify a result."},
+    {"id": "N-A15", "slice": "T2", "gate": "core", "requirement": "Revocation, grant expiry, channel replacement, and stale policy block pending/retry sends within the declared bound; in-flight limitations are recorded."},
+    {"id": "N-A16", "slice": "T2", "gate": "core", "requirement": "An old paused dispatcher cannot be treated as safely fenced at the provider; takeover and ambiguous fallback follow the tested uncertainty policy."},
+    {"id": "N-A17", "slice": "T1", "gate": "core", "requirement": "Resolving a blocker cancels reminders; acknowledgement alone does not resolve it; 'project complete' requires its explicit milestone predicate."},
+    {"id": "N-A18", "slice": "T1", "gate": "core", "requirement": "Database restoration/reset, corrupt envelopes, spool saturation, and missing event ranges cause bounded recovery/gap reporting without campaign mutation."},
+    {"id": "N-A19", "slice": "T2", "gate": "core", "requirement": "Fake transport acceptance does not imply device delivery, reading, review, or authority; source/digest and template versions reproduce the same historical briefing."},
+    {"id": "N-A20", "slice": "N6", "gate": "deferred", "requirement": "Literature injection, duplicate versions, abstract-only inputs, contradictory passages, unavailable sources, and unsupported citations preserve the stated boundaries and limitations."}
+  ]
+}

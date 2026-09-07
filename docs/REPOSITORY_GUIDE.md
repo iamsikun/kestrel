@@ -6,6 +6,14 @@ on 2026-09-07 at `a73f5387400f3d5eb9d024ee45782b98192b9e0e`; runtime code is unc
 from `ac9879e9a7725558468112f9f3950c687cf0a84d`. This is an orientation and product
 gap assessment, not an independent deployment audit.
 
+Update after project integration: the component map and gap assessment below
+describe that earlier fixture pilot. The new [project tutorial](PROJECT_TUTORIAL.md)
+covers connected projects, revisioned selected snapshots, bounded source edits,
+and controller-backed execution-only Docker experiments. Read [BUILD_STATE](../BUILD_STATE.md)
+for current verification; general scientific planning and evaluation remain separate.
+The historical statements below about absent project execution are superseded
+by this workflow, which reports project outputs as self-reported.
+
 Kestrel currently provides a substantial research execution and evidence core,
 connected to a deliberately narrow offline demonstration. It can preserve a
 question, freeze a comparison, enforce local approval and budget rules, track
