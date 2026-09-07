@@ -116,3 +116,43 @@ this revision has an author who cannot also be its independent review.
   source and provider version. No authorized live integration, credential
   boundary or version pin exists, so nothing offline may claim live provenance.
   Enabling it requires the separate authorized work behind A30 and A31.
+
+## Review of the auditor-authored repairs (2026-09-07)
+
+- Retain the pilot's rule that substantive findings require succeeded execution.
+  It applies to the frozen finite `evaluate_each_once` workflow, not a general
+  theorem about all research. Invalid/incomplete or zero-observation work cannot
+  certify a claim. Failed execution with a valid protocol and an inconclusive
+  finding remains possible after verified partial work; a regression covers it.
+- Supersede the earlier decision to check evidence shape alone at completion.
+  `Controller` optionally receives the application-owned `Artifacts` store; valid
+  completion now requires that store and resolves/hash-checks each cited artifact,
+  its status, campaign attribution and agreement with all three outcome labels.
+  Substantive findings additionally require independent evidence assurance.
+  A detached ledger may still retain incomplete/invalid operational history; it
+  cannot certify a valid protocol. The controller does not execute project code or
+  accept a worker-controlled evidence-resolver callback. Artifact-store lifetime
+  stays with the application; reopening a Lab attaches it again.
+- Reports also check outcome agreement, after reading and verifying artifact bytes.
+  This rejects inconsistent historical/imported outcomes without mutating history
+  or hiding hash errors. `evidence[].consistent` is an additive operational field;
+  report bytes and packet hashes consequently change. No new scientific assurance
+  is inferred from that flag.
+- Registration of a typed contract artifact is shared by proposal and the Lab run/
+  cancellation paths. This covers controller-created amendments without silently
+  rewriting existing artifacts, adding tasks, carrying forward old approvals or
+  executing an amendment. New tasks and a fresh digest-bound approval remain
+  necessary; the original campaign and its artifacts stay immutable.
+- Keep the audit's source-project/context memory policy: cross-project retrieval
+  requires explicitly approved public de-identified methodology/claim sharing
+  (SCIENCE section 7). A principal's restricted-source grant alone is insufficient.
+  There is no application memory caller or live credential boundary in this pilot.
+- Keep `live` as a recognized raw result label that the shared offline validator
+  explicitly rejects. It is not an enabled live path. Recovery additionally binds
+  provider identity and version: the built-in mock implementation, fixed wire
+  reader backend, or frozen normalized recording determines them. Future live
+  integration still requires separate authorization and tested/pinned interfaces.
+- Trusted code can assign artifact assurance and operates SQLite directly. These
+  checks catch controller/application mistakes; they do not protect against a
+  malicious controller, host administrator or forged test runner. Container
+  configuration and all blocked deployment/provider/GPU gates are unchanged.

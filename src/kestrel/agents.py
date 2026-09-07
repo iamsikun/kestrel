@@ -68,10 +68,11 @@ class MockAgent:
     """Deterministic replay tests the harness, not coding intelligence."""
 
     provider_calls = 0
+    version = "kestrel-mock-v1"
 
     def run(self, task: AgentTask) -> AgentResult:
         result = AgentResult(task_id=task.task_id, contract_digest=task.contract_digest,
-                             provider="mock", provider_version="kestrel-mock-v1",
+                             provider="mock", provider_version=self.version,
                              source="deterministic_mock", status="completed",
                              proposals=[Proposal(path="config.json", content='{"method":"inferior"}')],
                              events=[{"id": "mock-proposal-1", "type": "proposal"}], calls=0, tokens=0)

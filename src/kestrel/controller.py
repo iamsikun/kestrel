@@ -22,6 +22,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from kestrel.artifacts import Artifacts
+from kestrel.contracts import outcome_matches, parse_json
+
 
 class ControllerError(ValueError):
     """A requested controller operation violates a persisted invariant."""
@@ -222,10 +225,14 @@ class Controller:
         *,
         policy_version: str = "development-v1",
         resource_capacity: Mapping[str, Any] | None = None,
+        evidence_store: Artifacts | None = None,
     ) -> None:
         if Path(path).is_symlink():
             raise ControllerError("Controller database cannot be a symlink")
         self.path = Path(path).resolve()
+        # The application owns this store's lifecycle. A ledger alone cannot
+        # establish that a valid scientific outcome has resolvable evidence.
+        self.evidence_store = evidence_store
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(self.path, timeout=10, isolation_level=None)
         self._db.row_factory = sqlite3.Row
@@ -1075,6 +1082,21 @@ class Controller:
                 raise StateError(
                     "A valid protocol requires at least one verified succeeded attempt"
                 )
+            if protocol_status == "valid":
+                if self.evidence_store is None:
+                    raise StateError("Valid completion requires an attached evidence store")
+                for identity in evidence_ids:
+                    record = self.evidence_store.get(identity)
+                    payload = parse_json(self.evidence_store.read(identity))
+                    if (record["status"] != "valid" or type(payload) is not dict
+                            or payload.get("campaign_id") != campaign_id
+                            or campaign["digest"] not in record["lineage"]
+                            or not outcome_matches(payload, execution=execution_status,
+                                                   validity=protocol_status, finding=finding)):
+                        raise StateError("Outcome evidence is invalid, unattributable or inconsistent")
+                    if (finding in {"SUPPORTED_IN_SCOPE", "NOT_SUPPORTED"}
+                            and record["assurance"] not in {"independently_recomputed", "replicated"}):
+                        raise StateError("A substantive finding requires independently verified evidence")
             outcome = {
                 "execution_status": execution_status,
                 "protocol_status": protocol_status,

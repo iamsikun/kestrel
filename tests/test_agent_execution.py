@@ -307,13 +307,13 @@ def test_offline_cancellation_cannot_certify_another_backend_stopped(tmp_path):
 
 
 @pytest.mark.acceptance("A29")
-@pytest.mark.parametrize("forgery", ["live", "captured", "provider-version"])
+@pytest.mark.parametrize("forgery", ["live", "captured", "provider-version", "provider-identity", "mock-version", "replay-provider"])
 def test_receipt_output_provenance_must_match_the_frozen_plan(tmp_path, forgery):
     """Independent audit regression: the receipt-driven recovery path replays a
     stored output without reinvoking the reader, so that output's provenance must
     still match the frozen plan. A live label has no authorized integration."""
     with Lab.initialize(tmp_path / "lab") as lab:
-        if forgery == "provider-version":
+        if forgery in {"provider-version", "replay-provider"}:
             # A pinned provider version only exists for a replay plan; the mock
             # backend declares none, so that case must exercise the replay path.
             recording = MockAgent().run(historical_task()).model_dump(mode="json")
@@ -331,6 +331,12 @@ def test_receipt_output_provenance_must_match_the_frozen_plan(tmp_path, forgery)
         elif forgery == "captured":
             honest.update(source="captured_recording", provider="codex",
                           provider_version="codex-cli-unverified")
+        elif forgery == "provider-identity":
+            honest.update(provider="claude")
+        elif forgery == "mock-version":
+            honest.update(provider_version="unverified-mock-version")
+        elif forgery == "replay-provider":
+            honest.update(provider="claude", source="synthetic_recording")
         else:
             honest.update(source="synthetic_recording",
                           provider_version="kestrel-mock-v99-unpinned")

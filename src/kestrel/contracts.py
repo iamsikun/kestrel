@@ -17,6 +17,13 @@ class ContractError(ValueError):
     pass
 
 
+def outcome_matches(payload: Any, *, execution: str, validity: str, finding: str) -> bool:
+    """A ledger label cannot contradict the outcome in the cited evidence."""
+    return (type(payload) is dict and payload.get("execution") == execution
+            and payload.get("validity") == validity
+            and payload.get("finding") == finding.lower())
+
+
 def _normalize(value: Any) -> Any:
     if isinstance(value, BaseModel):
         return _normalize(value.model_dump(mode="json"))

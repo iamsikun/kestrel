@@ -14,7 +14,7 @@ from pathlib import Path
 
 from kestrel.agent_execution import AgentPlan, OfflineAgents
 from kestrel.agents import Proposal
-from kestrel.artifacts import Artifacts, _safe_read
+from kestrel.artifacts import ArtifactError, Artifacts, _safe_read
 from kestrel.contracts import (
     Brief,
     Budget,
@@ -24,6 +24,7 @@ from kestrel.contracts import (
     TaskSpec,
     canonical,
     digest,
+    outcome_matches,
     parse_json,
     validate_response,
 )
@@ -69,7 +70,7 @@ class Lab:
                 raise ValueError("Developer lab state paths must not redirect through symlinks")
         self.projects = Projects(framework_root(), self.root / "definition", self.root / "runtime")
         self.store = Artifacts(self.root / "runtime" / "artifacts")
-        self.controller = Controller(self.root / "runtime" / "controller.sqlite")
+        self.controller = Controller(self.root / "runtime" / "controller.sqlite", evidence_store=self.store)
         self.driver = DevelopmentDriver(self.root / "runtime" / "jobs")
         self.agents = OfflineAgents(self.controller, self.store, self.root / "runtime" / "agents")
 
@@ -178,9 +179,7 @@ class Lab:
             budget=Budget(attempts=3, runtime_seconds=11, provider_calls=0, tokens=0),
         )
         campaign_id = self.controller.propose(contract.model_dump(mode="json"))
-        parents = [contract.data, contract.evaluator, contract.analysis, environment_record["digest"],
-                   plan_record["digest"], *[r.source for r in recipes]]
-        self._put(contract.model_dump(mode="json"), producer=f"contract:{campaign_id}", lineage=parents)
+        self._ensure_contract_artifact(campaign_id)
         agent_task = TaskSpec(id=f"agent-{campaign_id}", campaign_id=campaign_id,
                               recipe=plan_record["digest"], operation="offline_agent", profile="development",
                               budget={"runtime_seconds": 1, "provider_calls": 0, "tokens": 0},
@@ -196,6 +195,23 @@ class Lab:
                                          rationale=contract.selection_rule, observation_ids=[])
         self.controller.freeze(campaign_id)
         return campaign_id
+
+    def _ensure_contract_artifact(self, campaign_id: str) -> None:
+        """Register authoritative controller amendments at the application boundary.
+
+        Existing records are never rewritten or given stronger trust labels.
+        """
+        campaign = self.controller.campaign(campaign_id)
+        try:
+            self.store.get(campaign["digest"])
+        except ArtifactError:
+            contract = CampaignContract.model_validate(campaign["contract"])
+            parents = [contract.data, contract.evaluator, contract.analysis,
+                       contract.controls["agent_plan"],
+                       *[r.environment for r in contract.recipes],
+                       *[r.source for r in contract.recipes]]
+            self._put(contract, producer=f"contract:{campaign_id}", lineage=parents,
+                      historical=True)
 
     def approve(self, campaign_id: str, contract_digest: str, token: str) -> str:
         capabilities = self.controller.campaign(campaign_id)["contract"]["capabilities"]
@@ -284,6 +300,7 @@ class Lab:
                                        detail={"error_type": type(exc).__name__, "message": str(exc)})
 
     def run(self, campaign_id: str, approval_id: str) -> dict:
+        self._ensure_contract_artifact(campaign_id)
         campaign = self.controller.campaign(campaign_id)
         contract = CampaignContract.model_validate(campaign["contract"])
         if digest(contract) != campaign["digest"]:
@@ -375,17 +392,21 @@ class Lab:
                 # Valid, independently recomputed bytes are not this campaign's
                 # evidence unless they are actually attributable to it. Borrowed
                 # analysis from another campaign cannot certify this one.
+                if type(analysis) is not dict:
+                    raise ValueError("Outcome evidence must contain a structured outcome")
                 attributable = (analysis.get("campaign_id") == campaign_id
                                 and campaign["digest"] in record["lineage"])
+                consistent = outcome_matches(analysis, execution=outcome["execution_status"],
+                                             validity=outcome["protocol_status"], finding=outcome["finding"])
                 analysis["assurance"] = record["assurance"]
-                if record["status"] != "valid" or not attributable:
+                if record["status"] != "valid" or not attributable or not consistent:
                     analysis = {**analysis, "validity": "invalid", "finding": "inconclusive",
                                 "assurance": "unverified"}
                 evidence.append({"digest": identity, "status": record["status"],
                                  "assurance": record["assurance"], "analysis": analysis,
-                                 "attributable": attributable})
+                                 "attributable": attributable, "consistent": consistent})
             validity = (outcome["protocol_status"]
-                        if all(e["status"] == "valid" and e["attributable"] for e in evidence)
+                        if all(e["status"] == "valid" and e["attributable"] and e["consistent"] for e in evidence)
                         else "invalid")
             if validity == "valid":
                 assurance = ("independently_recomputed" if all(e["assurance"] == "independently_recomputed" for e in evidence)
@@ -423,6 +444,7 @@ class Lab:
         if (campaign["state"] in {"FROZEN", "CONFIRMING"}
                 and all(task["state"] in TERMINAL for task in tasks)
                 and all(a["state"] in TERMINAL and not a["resources_held"] for a in attempts)):
+            self._ensure_contract_artifact(campaign_id)
             references = [value for attempt in attempts
                           for record in (attempt["result"], attempt["diagnostic"]) if record
                           for key, value in record.items()

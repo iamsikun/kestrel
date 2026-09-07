@@ -173,9 +173,20 @@ class OfflineAgents:
             # stored output's provenance must still match the frozen plan. The mock
             # backend emits its own label; a plan's recording source never applies.
             expected_source = "deterministic_mock" if plan.backend == "mock" else plan.source
-            if result.source != expected_source or (
-                plan.backend != "mock" and result.provider_version != plan.provider_version
-            ):
+            expected_version = MockAgent.version if plan.backend == "mock" else plan.provider_version
+            if plan.backend == "normalized_replay":
+                # Decode bounded historical data, never reinvoke a provider. The
+                # recording identity also fixes which provider produced it.
+                raw = self.store.get(plan.recording)
+                if raw["status"] != "valid" or raw["size"] > plan.max_output_bytes:
+                    raise ValueError("Frozen provider recording is invalid or oversized")
+                historical = validate_result(plan.recorded_task, self.store.read(plan.recording))
+                expected_provider = historical.provider
+            else:
+                expected_provider = {"mock": "mock", "codex_recording": "codex",
+                                     "claude_recording": "claude"}[plan.backend]
+            if (result.source != expected_source or result.provider_version != expected_version
+                    or result.provider != expected_provider):
                 raise ValueError("Agent output provenance differs from the frozen plan")
             if result.status != "completed" or (plan.expected_proposals is not None and result.proposals != plan.expected_proposals):
                 raise ValueError("Receipt does not match a validated completed agent result")

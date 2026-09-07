@@ -15,6 +15,8 @@ from hypothesis import settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
+from kestrel.artifacts import Artifacts
+from kestrel.contracts import canonical
 from kestrel.controller import AuthorityError, BudgetError, Controller, ControllerError, StateError
 
 TOKEN = "synthetic-development-operator-token-" * 2
@@ -346,19 +348,25 @@ def test_original_contract_is_immutable_and_frozen_changes_require_new_approval(
 
 
 @pytest.mark.acceptance("A23")
-def test_negative_finding_completes_without_retry_until_win(store):
+def test_negative_finding_completes_without_retry_until_win(store, tmp_path):
     campaign_id, approval_id = authorize(store)
     task = store.add_task(campaign_id, {"id": "inferior-treatment"})
     attempt = succeeded(store, reserve(store, task, approval_id))
     store.freeze(campaign_id)
     store.start_confirmation(campaign_id)
-    store.complete(
-        campaign_id,
-        execution_status="succeeded",
-        protocol_status="valid",
-        finding="not_supported",
-        evidence_ids=[attempt["result"]["observation_id"]],
-    )
+    evidence = Artifacts(tmp_path / "evidence")
+    try:
+        store.evidence_store = evidence
+        frozen = evidence.put_bytes(canonical(store.campaign(campaign_id)["contract"]),
+                                    producer="test:contract")
+        outcome = evidence.put_bytes(canonical({"campaign_id": campaign_id,
+            "execution": "succeeded", "validity": "valid", "finding": "not_supported",
+            "observation": attempt["result"]["observation_id"]}), producer="test:model-evaluator",
+            lineage=[frozen["digest"]], assurance="independently_recomputed")
+        store.complete(campaign_id, execution_status="succeeded", protocol_status="valid",
+                       finding="not_supported", evidence_ids=[outcome["digest"]])
+    finally:
+        evidence.close()
     outcome = store.campaign(campaign_id)["outcome"]
     assert outcome["execution_status"] == "succeeded"
     assert outcome["protocol_status"] == "valid"
@@ -473,6 +481,30 @@ def test_empty_campaign_cannot_declare_a_valid_protocol(store):
             evidence_ids=["e" * 64],
         )
     assert store.campaign(campaign_id)["outcome"] is None
+
+
+@pytest.mark.acceptance("A27")
+def test_partial_execution_can_remain_valid_but_inconclusive(store, tmp_path):
+    campaign, approval = authorize(store)
+    success = store.add_task(campaign, {"id": "observed"})
+    failed = store.add_task(campaign, {"id": "failed"})
+    succeeded(store, reserve(store, success, approval))
+    attempt = reserve(store, failed, approval)
+    store.transition(attempt["id"], "FAILED", fence=attempt["fence"])
+    store.reconcile(attempt["id"], inspect("stopped"))
+    store.freeze(campaign)
+    evidence = Artifacts(tmp_path / "partial-evidence")
+    try:
+        store.evidence_store = evidence
+        frozen = evidence.put_bytes(canonical(store.campaign(campaign)["contract"]), producer="test:contract")
+        outcome = evidence.put_bytes(canonical({"campaign_id": campaign, "execution": "failed",
+            "validity": "valid", "finding": "inconclusive"}), producer="test:protocol-review",
+            lineage=[frozen["digest"]])
+        store.complete(campaign, execution_status="failed", protocol_status="valid",
+                       finding="INCONCLUSIVE", evidence_ids=[outcome["digest"]])
+        assert store.campaign(campaign)["outcome"]["finding"] == "INCONCLUSIVE"
+    finally:
+        evidence.close()
 
 
 class DurableTestDriver:
