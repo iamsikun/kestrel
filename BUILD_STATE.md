@@ -1,5 +1,51 @@
 # Build state
 
+Telegram messaging T0-T3 and T5 implemented, T4 prepared and inert (2026-09-07).
+Branch `build/telegram-messaging`; verified revision
+`b7fbb1948a2d1d097b4b720e8208606ae8147797`; commands, hashes and residual limits
+in [docs/MESSAGING_VERIFICATION.md](docs/MESSAGING_VERIFICATION.md); operator
+steps in [docs/MESSAGING_OPERATIONS.md](docs/MESSAGING_OPERATIONS.md).
+
+Six new modules: `reporting.py` (the one verified report interpretation, now
+shared with `Lab.report`), `sources.py` (bounded read-only controller/evidence
+readers), `briefings.py`, `messaging.py` (assistant database, projection, rules,
+milestones, DST-correct schedules, attention, inbox, inbound commands),
+`notifications.py` (channels, service grants, disclosure, envelopes, permits,
+delivery state machine, quotas, offline transports) and `telegram.py` (four-method
+adapter, pairing, rotation, durable poller). New CLI: `brief`, `inbox`, `notify`
+under `--messaging-root`. New separate inventory `specs/messaging-acceptance.json`
+under a distinct JUnit property, so the pinned first-pilot spec, its manifest and
+`validate_pack` are untouched.
+
+Results: ruff exit 0; `python3 tools/validate_pack.py` exit 0 (20 files, 46
+requirements unchanged); `git diff --check` exit 0; core suite
+`-m 'not isolation and not install'` — 434 passed, 2 skipped (A28 and the
+never-run live Telegram file), 12 deselected, exit 0, against the 249-pass
+baseline; `uv build --offline` passed; clean external install 1 passed, exit 0;
+actual Docker Linux VM isolation 11 passed, exit 0, leaving none of its own
+containers; `uv run --offline kestrel demo --offline` exit 0 with two campaigns,
+six charged attempts, zero provider calls and two `not_supported` findings
+identical to the pre-messaging baseline; release accounting 42 passed / 4 blocked,
+exit 1, no integrity issues, all readiness flags and `deployment.authorized`
+false. Evidence: `/private/tmp/kestrel-telegram-messaging-final/`, with per-slice
+records in `/private/tmp/kestrel-telegram-messaging/`. Wheel SHA256
+`b71e2e3d0de7466cb1f068f75447768851775a9657e2159f4ae9a1bf2c40e47f`.
+
+No bot, credential, sent message, host service, deployment, live provider,
+permission change or push. Live Telegram operations fail closed behind
+`KESTREL_TELEGRAM_ACTIVATED`, which nothing in the codebase or test suite sets.
+`deploy/telegram/` has never been executed on any host, so messaging conditions
+N-A05 and N-A12 are unpassed, the live half of N-A19 is unpassed, and N-A20 is
+deferred. Prior blockers A28, A30, A31 and A43 are unchanged. The demonstrated
+boundary is what each process is given, not what an operating system denies, and
+this author cannot also be the independent review.
+
+Next unblocked action: an independent review of `3c47dc3..b7fbb19`, starting with
+docs/MESSAGING_VERIFICATION.md and the disclosure and delivery paths. After that,
+the first authorized synthetic Telegram test follows docs/MESSAGING_OPERATIONS.md
+section 4, which needs an operator-created bot, a mode-0600 credential file, and
+`KESTREL_TELEGRAM_ACTIVATED=1` for those commands only.
+
 Telegram messaging T5 (2026-09-07): durable inbound polling and typed replies on
 `build/telegram-messaging`, offline. `telegram.InboundPoller` journals every update
 or rejection tombstone before advancing the offset, enters an explicit rebase mode
