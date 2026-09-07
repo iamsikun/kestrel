@@ -153,3 +153,40 @@ def test_imported_artifacts_do_not_gain_assurance_from_restored_controller(tmp_p
         assert report["assurance"] == "imported"
         assert report["finding"] == "inconclusive"
         assert report["evidence"][0]["analysis"]["assurance"] == "imported"
+
+
+@pytest.mark.acceptance("A39")
+@pytest.mark.acceptance("A45")
+def test_identical_results_do_not_merge_campaign_export_lineage(tmp_path):
+    result = demo(tmp_path / "demo")
+    first = result["reports"][0]
+    with Lab(Path(result["root"])) as lab:
+        second = lab.propose("numerical", "Unrelated synthetic brief that must stay in its own packet")
+        contract = lab.controller.campaign(second)
+        approval = lab.approve(second, contract["digest"], (lab.root / "operator.token").read_text())
+        other = lab.run(second, approval)
+        assert first["evidence"][0]["analysis"]["difference"] == other["evidence"][0]["analysis"]["difference"]
+        bundle = lab.export(first["campaign_id"], tmp_path / "first-only.zip")
+        imported = Artifacts(tmp_path / "imported-identical")
+        try:
+            records = imported.import_bundle(bundle)
+            assert contract["digest"] not in {record["digest"] for record in records}
+            for record in records:
+                assert second.encode() not in imported.read(record["digest"])
+        finally:
+            imported.close()
+
+
+@pytest.mark.acceptance("A25")
+def test_cancel_unstarted_campaign_has_durable_cancelled_outcome(tmp_path):
+    with Lab.initialize(tmp_path / "lab") as lab:
+        manifest = generate(tmp_path / "projects", framework_root())[0]
+        project = lab.register(manifest, snapshot_dirty=True)
+        campaign = lab.propose(project["project_id"], "Cancel before authorizing any execution")
+        report = lab.cancel(campaign)
+        assert report["state"] == "COMPLETE"
+        assert report["execution"] == "cancelled"
+        assert report["validity"] == "incomplete"
+        assert report["finding"] == "inconclusive"
+        assert report["attempts"] == []
+        assert all(task["state"] == "CANCELLED" for task in lab.controller.tasks(campaign))

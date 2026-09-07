@@ -196,6 +196,8 @@ class Artifacts:
             stale_parent = False
             for parent in parents:
                 record = self.get(parent)
+                if record["classification"] == "restricted" and classification != "restricted":
+                    raise ArtifactError("restricted parent data cannot lose its classification through lineage")
                 if record["status"] != "valid":
                     if not historical or record["status"] == "deleted":
                         raise ArtifactError("cannot derive valid evidence from unavailable or invalid input")
@@ -212,6 +214,11 @@ class Artifacts:
                 self.read(digest)
                 if old["classification"] != classification:
                     raise ArtifactError("content classification conflict")
+                original_parents = [row[0] for row in self.db.execute(
+                    "SELECT parent FROM edges WHERE child=? ORDER BY parent", (digest,)
+                )]
+                if parents != original_parents:
+                    raise ArtifactError("conflicting content provenance; create a distinct occurrence record")
             else:
                 if self.db.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] >= self.max_artifacts:
                     raise ArtifactError("artifact record count budget exhausted")

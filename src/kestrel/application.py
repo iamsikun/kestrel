@@ -250,16 +250,19 @@ class Lab:
             response = validate_response(status.stdout, attempt["id"], status.returncode)
             if len(response.produced_artifacts) != 1 or response.produced_artifacts[0].path != "result.json":
                 raise ValueError("Frozen fixture output schema requires exactly result.json")
-            raw = self.store.ingest(workspace / "output", "result.json", producer=f"attempt:{attempt['id']}",
-                                    completed=True, media_type="application/json",
-                                    lineage=[digest(contract), recipe.source, receipt["digest"]])
+            # Content-addressed bytes may be identical across campaigns. Their
+            # occurrence/provenance lives in the unique observation and receipt,
+            # so sharing bytes cannot union unrelated campaign ancestors.
+            raw = self.store.ingest(workspace / "output", "result.json", producer="controller:raw-content",
+                                    completed=True, media_type="application/json")
             observation = evaluate(kind=contract.controls["kind"], payload=self.store.read(raw["digest"]),
                                    attempt_id=attempt["id"], recipe=recipe.identity, artifact=raw["digest"],
                                    evaluator=parse_json(self.store.read(contract.evaluator)),
                                    data=parse_json(self.store.read(contract.data)),
                                    expected_method=recipe.config["method"])
             verified = self._put(observation.model_dump(mode="json"), producer=f"evaluator:{attempt['id']}",
-                                 lineage=[raw["digest"], contract.evaluator, contract.data, contract.analysis],
+                                 lineage=[raw["digest"], receipt["digest"], contract.evaluator,
+                                          contract.data, contract.analysis],
                                  assurance="independently_recomputed")
             self.controller.record_result(attempt["id"], {"observation": verified["digest"],
                                                           "raw": raw["digest"], "recipe": recipe.identity,
@@ -324,6 +327,7 @@ class Lab:
             base_id, baseline = observations[contract.baseline]
             treatment_id, treatment = observations[contract.candidates[0]]
             analysis = comparison(baseline, treatment, contract.practical_threshold)
+            analysis.update(campaign_id=campaign_id, observations=[base_id, treatment_id])
             artifact = self._put(analysis, producer=f"comparison:{campaign_id}",
                                  lineage=[base_id, treatment_id, contract.analysis, digest(contract)],
                                  assurance="independently_recomputed")
@@ -385,6 +389,22 @@ class Lab:
             current = self.controller.reconcile(attempt["id"], lambda _: self._inspection(attempt))
             if status.stopped and current["state"] not in TERMINAL:
                 self.controller.transition(current["id"], "CANCELLED", fence=current["fence"])
+        campaign = self.controller.campaign(campaign_id)
+        attempts = self.controller.attempts(campaign_id)
+        tasks = self.controller.tasks(campaign_id)
+        if (campaign["state"] in {"FROZEN", "CONFIRMING"}
+                and all(task["state"] in TERMINAL for task in tasks)
+                and all(a["state"] in TERMINAL and not a["resources_held"] for a in attempts)):
+            references = [value for attempt in attempts
+                          for record in (attempt["result"], attempt["diagnostic"]) if record
+                          for key, value in record.items()
+                          if key in {"observation", "raw", "execution"} and value is not None]
+            stopped = self._put({"execution": "cancelled", "validity": "incomplete",
+                                 "finding": "inconclusive", "tasks": tasks, "attempts": attempts},
+                                producer=f"cancellation:{campaign_id}", lineage=references,
+                                historical=True)
+            self.controller.complete(campaign_id, execution_status="cancelled", protocol_status="incomplete",
+                                      finding="INCONCLUSIVE", evidence_ids=[stopped["digest"]])
         return self.report(campaign_id)
 
     def export(self, campaign_id: str, destination: Path) -> Path:

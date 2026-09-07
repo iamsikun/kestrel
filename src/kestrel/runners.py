@@ -249,21 +249,27 @@ def _supervise(job_dir: Path) -> None:
         cancelled = True
 
     signal.signal(signal.SIGTERM, request_cancel)
-    _json_write(
-        job_dir / "supervisor.json", {"pid": os.getpid(), "identity": _identity(os.getpid())}
-    )
-    (job_dir / "input.json").write_text(json.dumps(spec["request"]))
-    with (job_dir / "input.json").open("rb") as source:
-        child = subprocess.Popen(
-            spec["argv"],
-            cwd=spec["workspace"],
-            stdin=source,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            start_new_session=True,
-            env={"PATH": "/usr/bin:/bin", "LANG": "C", "PYTHONHASHSEED": "0"},
+    with _guard_lock(job_dir):
+        if (job_dir / "cancelled").exists():
+            return
+        _json_write(
+            job_dir / "supervisor.json", {"pid": os.getpid(), "identity": _identity(os.getpid())}
         )
-    _json_write(job_dir / "child.json", {"pid": child.pid, "identity": _identity(child.pid)})
+        (job_dir / "input.json").write_text(json.dumps(spec["request"]))
+        # A crash between spawning and recording the child must remain UNKNOWN,
+        # never be mistaken for a cancellable, never-started dispatch.
+        _json_write(job_dir / "child-starting.json", {})
+        with (job_dir / "input.json").open("rb") as source:
+            child = subprocess.Popen(
+                spec["argv"],
+                cwd=spec["workspace"],
+                stdin=source,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+                env={"PATH": "/usr/bin:/bin", "LANG": "C", "PYTHONHASHSEED": "0"},
+            )
+        _json_write(job_dir / "child.json", {"pid": child.pid, "identity": _identity(child.pid)})
     started = time.monotonic()
     streams = selectors.DefaultSelector()
     assert child.stdout is not None and child.stderr is not None
@@ -273,6 +279,7 @@ def _supervise(job_dir: Path) -> None:
     reason = "exit"
     confirmed = False
     while True:
+        cancelled = cancelled or (job_dir / "cancelled").exists()
         if cancelled or time.monotonic() - started > spec["timeout_seconds"]:
             reason = "cancelled" if cancelled else "timeout"
             confirmed = _kill_group(child)
@@ -432,36 +439,37 @@ class DevelopmentDriver:
         ):
             raise DriverError("workspace must not contain driver state")
         directory = self._directory(spec.attempt_id)
-        try:
-            directory.mkdir(mode=0o700)
-        except FileExistsError:
+        with _guard_lock(directory):
+            if (directory / "cancelled").exists():
+                raise DriverError("attempt is permanently cancelled; launch is fenced")
             dispatch = directory / "dispatch.json"
-            if not dispatch.exists() or json.dumps(
-                json.loads(dispatch.read_text()), sort_keys=True
-            ) != json.dumps(_spec_data(spec), sort_keys=True):
-                raise DriverError(
-                    "attempt already exists or dispatch outcome is uncertain"
-                ) from None
-            return spec.attempt_id
-        _json_write(directory / "dispatch.json", _spec_data(spec))
-        # Persist the tombstone first. A crash before/after Popen never permits a
-        # second blind launch; an incomplete dispatch remains UNKNOWN.
-        process = subprocess.Popen(
-            [
-                sys.executable,
-                "-I",
-                "-B",
-                str(Path(__file__).resolve()),
-                "--supervise",
-                str(directory),
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            env={"PATH": "/usr/bin:/bin", "LANG": "C"},
-        )
-        self._supervisors[spec.attempt_id] = process
+            if dispatch.exists():
+                if json.dumps(json.loads(dispatch.read_text()), sort_keys=True) != json.dumps(
+                    _spec_data(spec), sort_keys=True
+                ):
+                    raise DriverError("attempt already exists or dispatch outcome is uncertain")
+                return spec.attempt_id
+            if any(item.name != "dispatch.lock" for item in directory.iterdir()):
+                raise DriverError("attempt metadata is incomplete; dispatch outcome is uncertain")
+            _json_write(dispatch, _spec_data(spec))
+            # Persist before Popen. The same lock fences cancellation and the
+            # supervisor's later child spawn, closing both dispatch windows.
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-I",
+                    "-B",
+                    str(Path(__file__).resolve()),
+                    "--supervise",
+                    str(directory),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                env={"PATH": "/usr/bin:/bin", "LANG": "C"},
+            )
+            self._supervisors[spec.attempt_id] = process
         return spec.attempt_id
 
     def inspect(self, job_id: str) -> JobStatus:
@@ -505,10 +513,30 @@ class DevelopmentDriver:
         return JobStatus(job_id, "unknown", detail="wait deadline; reservation remains held")
 
     def cancel(self, job_id: str) -> JobStatus:
-        status = self.inspect(job_id)
-        if status.stopped:
-            return status
-        supervisor = self._directory(job_id) / "supervisor.json"
+        directory = self._directory(job_id)
+        with _guard_lock(directory):
+            _json_write(directory / "cancelled", {})
+            status = self.inspect(job_id)
+            if status.state == "stopped":
+                return status
+            if not any(
+                (directory / name).exists()
+                for name in ("child-starting.json", "child.json", "supervisor.json")
+            ):
+                # This is a positive no-spawn proof: the supervisor must acquire
+                # this lock and observe the durable cancellation fence first.
+                _json_write(
+                    directory / "result.json",
+                    {
+                        "returncode": None,
+                        "stdout": "",
+                        "stderr": "",
+                        "stopped": True,
+                        "detail": "cancelled before candidate launch",
+                    },
+                )
+                return self.inspect(job_id)
+        supervisor = directory / "supervisor.json"
         if supervisor.exists():
             data = json.loads(supervisor.read_text())
             if data["identity"] is not None and _identity(data["pid"]) == data["identity"]:
@@ -638,6 +666,13 @@ class DockerDriver:
         if "," in str(workspace) or "\n" in str(workspace):
             raise DriverError("workspace path is not representable safely as a Docker mount")
         name = self._name(spec.attempt_id)
+        guard_dir = self.state_dir / name
+        with _guard_lock(guard_dir):
+            if (guard_dir / "cancelled").exists():
+                raise DriverError("attempt is permanently cancelled; launch is fenced")
+            return self._launch_locked(spec, workspace, name, guard_dir)
+
+    def _launch_locked(self, spec: JobSpec, workspace: Path, name: str, guard_dir: Path) -> str:
         previous = self._lookup(name)
         if previous is not None:
             if previous["Config"].get("Labels", {}).get("kestrel.spec") != _spec_digest(spec):
@@ -645,6 +680,10 @@ class DockerDriver:
             if previous["State"]["Status"] != "created":
                 self._specs[name] = spec
                 return name
+        elif (guard_dir / "dispatch.json").exists():
+            # A missing container with an existing dispatch is uncertain history,
+            # not permission to create a replacement under the same attempt ID.
+            return name
         else:
             payload = base64.b64encode(
                 json.dumps(
@@ -725,11 +764,7 @@ class DockerDriver:
                     payload,
                 ]
             )
-        self.state_dir.mkdir(mode=0o700, exist_ok=True)
-        guard_dir = self.state_dir / name
-        try:
-            guard_dir.mkdir(mode=0o700)
-        except FileExistsError:
+        if (guard_dir / "dispatch.json").exists():
             # A tombstone preceding supervisor creation closes the ambiguous
             # dispatch window. Never blindly create a second supervisor/start.
             self._specs[name] = spec
@@ -773,6 +808,8 @@ class DockerDriver:
         except DriverError as error:
             return JobStatus(job_id, "unknown", detail=str(error))
         if data is None:
+            if (self.state_dir / job_id / "cancelled").exists():
+                return JobStatus(job_id, "stopped", stopped=True, detail="cancelled; launch fenced")
             return JobStatus(job_id, "absent", stopped=True)
         state = data["State"]
         if state["Running"]:
@@ -840,13 +877,17 @@ class DockerDriver:
     def cancel(self, job_id: str, *, detail: str = "cancelled") -> JobStatus:
         # Fence starts before looking for a running container. Otherwise a
         # pending detached supervisor could start after cancellation returned.
+        if not re.fullmatch(r"kestrel-[0-9a-f]{40}", job_id):
+            raise DriverError("invalid Docker job identity")
         guard_dir = self.state_dir / job_id
-        self._lookup(job_id)  # Validate identity before deriving a writable path.
         with _guard_lock(guard_dir):
-            (guard_dir / "cancelled").touch()
-        data = self._lookup(job_id)
+            _json_write(guard_dir / "cancelled", {})
+        try:
+            data = self._lookup(job_id)
+        except DriverError as error:
+            return JobStatus(job_id, "unknown", detail=str(error))
         if data is None:
-            return JobStatus(job_id, "absent", stopped=True)
+            return JobStatus(job_id, "stopped", stopped=True, detail="cancelled; launch fenced")
         if data["State"]["Running"]:
             self._call(["container", "kill", "--signal", "KILL", job_id], check=False)
             remaining = self._lookup(job_id)
@@ -870,7 +911,7 @@ class DockerDriver:
         status = self.inspect(job_id)
         if not status.stopped:
             raise DriverError("cannot remove an unconfirmed job")
-        if status.state != "absent":
+        if self._lookup(job_id) is not None:
             self._call(["container", "rm", job_id])
         guard = self._guards.get(job_id)
         if guard is not None:

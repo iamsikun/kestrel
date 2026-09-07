@@ -13,9 +13,13 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -100,9 +104,13 @@ def test_dispatch_crash_does_not_blindly_relaunch(tmp_path, trusted_workspace, m
     monkeypatch.setattr(subprocess, "Popen", forbidden)
     assert driver.launch(spec) == spec.attempt_id
     assert driver.reconcile(spec.attempt_id).state == "unknown"
-    assert driver.cancel(spec.attempt_id).stopped is False
     with pytest.raises(DriverError, match="already exists"):
         driver.launch(replace(spec, timeout_seconds=2))
+    # No child-spawn intent exists, and the shared launch lock now proves that
+    # cancellation can fence the delayed supervisor before releasing resources.
+    assert driver.cancel(spec.attempt_id).stopped
+    with pytest.raises(DriverError, match="cancelled"):
+        driver.launch(spec)
 
 
 @pytest.mark.acceptance("A33")
@@ -505,3 +513,190 @@ def test_storage_watchdog_never_follows_symlinks_or_unbounded_metadata(tmp_path)
     for index in range(66):
         (workspace / str(index)).mkdir()
     assert _directory_size(workspace, 10) > 10
+
+
+@pytest.mark.acceptance("A17")
+@pytest.mark.acceptance("A32")
+def test_development_cancel_absent_permanently_fences_delayed_launch(
+    tmp_path, trusted_workspace, monkeypatch
+):
+    spec = fixture_spec(trusted_workspace)
+    driver = DevelopmentDriver(tmp_path / "driver")
+    assert driver.inspect(spec.attempt_id).state == "absent"
+    stopped = driver.cancel(spec.attempt_id)
+    assert stopped.state == "stopped" and stopped.stopped
+    restarted = DevelopmentDriver(tmp_path / "driver")
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("cancelled attempt must never spawn a delayed supervisor")
+
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    with pytest.raises(DriverError, match="permanently cancelled"):
+        restarted.launch(spec)
+    assert restarted.inspect(spec.attempt_id) == stopped
+    assert not (trusted_workspace / "output").exists()
+
+
+@pytest.mark.acceptance("A17")
+@pytest.mark.acceptance("A32")
+def test_development_mid_dispatch_cancel_fences_late_supervisor(
+    tmp_path, trusted_workspace, monkeypatch
+):
+    from kestrel.runners import _supervise
+
+    spec = fixture_spec(trusted_workspace)
+    driver = DevelopmentDriver(tmp_path / "driver")
+    entered, release = threading.Event(), threading.Event()
+
+    def paused_popen(*_args, **_kwargs):
+        entered.set()
+        assert release.wait(3), "test dispatch barrier was not released"
+        return SimpleNamespace(poll=lambda: None)
+
+    monkeypatch.setattr(subprocess, "Popen", paused_popen)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        launch = executor.submit(driver.launch, spec)
+        assert entered.wait(3)
+        cancel = executor.submit(driver.cancel, spec.attempt_id)
+        try:
+            with pytest.raises(FutureTimeout):
+                cancel.result(timeout=0.05)
+        finally:
+            release.set()
+        assert launch.result(timeout=3) == spec.attempt_id
+        assert cancel.result(timeout=3).stopped
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("supervisor arriving after stopped proof must not spawn a candidate")
+
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    monkeypatch.setattr("kestrel.runners.signal.signal", lambda *_args: None)
+    _supervise(tmp_path / "driver" / spec.attempt_id)
+    assert driver.inspect(spec.attempt_id).state == "stopped"
+    assert not (trusted_workspace / "output").exists()
+
+
+@pytest.mark.acceptance("A17")
+@pytest.mark.acceptance("A33")
+def test_development_cancel_ambiguous_child_spawn_keeps_reservation(tmp_path, trusted_workspace):
+    spec = fixture_spec(trusted_workspace)
+    driver = DevelopmentDriver(tmp_path / "driver")
+    directory = tmp_path / "driver" / spec.attempt_id
+    directory.mkdir()
+    _json_write(directory / "dispatch.json", _spec_data(spec))
+    _json_write(directory / "child-starting.json", {})
+    result = driver.cancel(spec.attempt_id)
+    assert result.state == "unknown" and not result.stopped
+    with pytest.raises(DriverError, match="permanently cancelled"):
+        driver.launch(spec)
+
+
+@pytest.mark.acceptance("A17")
+@pytest.mark.acceptance("A32")
+def test_docker_cancel_absent_permanently_fences_future_create(tmp_path, monkeypatch):
+    spec = docker_spec(tmp_path, "raise AssertionError('must not execute')")
+    driver = DockerDriver("sha256:" + "a" * 64, tmp_path)
+    monkeypatch.setattr(driver, "probe", lambda: {"available": True})
+    monkeypatch.setattr(driver, "_lookup", lambda _name: None)
+    name = driver._name(spec.attempt_id)
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("cancelled attempt must not issue Docker create/start")
+
+    monkeypatch.setattr(driver, "_call", forbidden)
+    assert driver.cancel(name).state == "stopped"
+    with pytest.raises(DriverError, match="permanently cancelled"):
+        driver.launch(spec)
+    assert driver.reconcile(spec.attempt_id).state == "stopped"
+    driver.remove(name)
+    assert driver.inspect(name).state == "stopped"
+
+
+@pytest.mark.acceptance("A17")
+@pytest.mark.acceptance("A32")
+def test_docker_mid_create_cancel_fences_late_supervisor(tmp_path, monkeypatch):
+    from kestrel.runners import _docker_supervise, _spec_digest
+
+    spec = docker_spec(tmp_path, "raise AssertionError('must not execute')")
+    driver = DockerDriver("sha256:" + "a" * 64, tmp_path)
+    monkeypatch.setattr(driver, "probe", lambda: {"available": True})
+    entered, release = threading.Event(), threading.Event()
+    state = {"container": None}
+    monkeypatch.setattr(driver, "_lookup", lambda _name: state["container"])
+
+    def fake_call(args, **_kwargs):
+        if args[:2] == ["image", "inspect"]:
+            return SimpleNamespace(stdout=b'[{"Config":{"Env":[]}}]')
+        assert args[:2] == ["container", "create"], args
+        entered.set()
+        assert release.wait(3)
+        state["container"] = {
+            "Config": {"Labels": {"kestrel.spec": _spec_digest(spec)}},
+            "State": {"Status": "created", "Running": False, "Pid": 0, "ExitCode": 0},
+        }
+        return SimpleNamespace(stdout=b"created")
+
+    monkeypatch.setattr(driver, "_call", fake_call)
+    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: SimpleNamespace())
+    name = driver._name(spec.attempt_id)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        launch = executor.submit(driver.launch, spec)
+        assert entered.wait(3)
+        cancel = executor.submit(driver.cancel, name)
+        try:
+            with pytest.raises(FutureTimeout):
+                cancel.result(timeout=0.05)
+        finally:
+            release.set()
+        assert launch.result(timeout=3) == name
+        assert cancel.result(timeout=3).stopped
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("late Docker supervisor must observe the cancellation fence")
+
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    _docker_supervise(driver.state_dir / name)
+    assert driver.inspect(name).stopped
+    with pytest.raises(DriverError, match="permanently cancelled"):
+        driver.launch(spec)
+
+
+@pytest.mark.acceptance("A17")
+@pytest.mark.acceptance("A32")
+def test_development_real_mid_launch_cancel_confirms_stop_before_release(
+    tmp_path, trusted_workspace, monkeypatch
+):
+    spec = fixture_spec(trusted_workspace)
+    driver = DevelopmentDriver(tmp_path / "driver")
+    entered, release = threading.Event(), threading.Event()
+    original = subprocess.Popen
+
+    def paused_popen(args, *values, **kwargs):
+        if "--supervise" in args:
+            entered.set()
+            assert release.wait(3)
+        return original(args, *values, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", paused_popen)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        launch = executor.submit(driver.launch, spec)
+        assert entered.wait(3)
+        cancel = executor.submit(driver.cancel, spec.attempt_id)
+        try:
+            with pytest.raises(FutureTimeout):
+                cancel.result(timeout=0.05)
+        finally:
+            release.set()
+        assert launch.result(timeout=3) == spec.attempt_id
+        cancelled = cancel.result(timeout=8)
+    assert cancelled.stopped or cancelled.state == "unknown"
+    stopped = driver.wait(spec.attempt_id, timeout=8)
+    assert stopped.stopped, stopped
+    result_path = trusted_workspace / "output" / "result.json"
+    output_at_stop = result_path.read_bytes() if result_path.exists() else None
+    guard = driver._supervisors[spec.attempt_id]
+    guard.wait(timeout=5)
+    assert (result_path.read_bytes() if result_path.exists() else None) == output_at_stop
+    assert driver.inspect(spec.attempt_id).stopped
+    with pytest.raises(DriverError, match="permanently cancelled"):
+        driver.launch(spec)

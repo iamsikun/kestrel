@@ -1,6 +1,7 @@
 # Build state
 
-Status: functional deterministic pilot on `build/first-pilot`; under verification,
+Status: functional deterministic pilot on `build/first-pilot`; implementation commit
+`f5bc705` plus tested independent-review repairs, under verification,
 not release-certified. No deployment authorized.
 
 Verified starting facts (2026-09-06): specification-only baseline `651106c`;
@@ -15,6 +16,7 @@ agents; development and Docker drivers; negative findings; recovery; invalidatio
 retention/backup; CLI and campaign-scoped evidence export/import; release-gate reporter.
 
 Evidence so far (commands exit 0 unless explicitly stated):
+- Latest repaired core suite: `.venv/bin/python -m pytest -m 'not isolation and not install' --junitxml=/private/tmp/kestrel-core-repairs.xml -q`: 192 passed, 1 skipped (A28 actual provider captures unavailable), 12 deselected (install/isolation run separately), 13.01s. Skipped A28 prevents core release readiness.
 - `.venv/bin/python -m pytest -m 'not isolation and not install' --junitxml=/private/tmp/kestrel-core-precommit-fixed.xml -q`: 177 passed, 12 deselected.
 - `.venv/bin/python -m pytest tests/test_application.py tests/test_application_adversarial.py -q`: 23 passed after export/provenance repairs.
 - `uv run --offline python -m kestrel demo --offline --output /private/tmp/kestrel-first-demo-verified`: two COMPLETE campaigns, four attempts, negative findings; numerical error difference 4, counterexample count difference 2; zero provider calls. Early demo under tool sandbox returned UNKNOWN because process inspection was denied; reservations were retained, not certified.
@@ -35,6 +37,13 @@ complete deployment to a separately operated Linux target. Hard writable-workspa
 storage quotas are unsupported and requests for them are rejected. No skipped gate
 counts as passing. General external code is registered but not executed by developer CLI.
 
-Exact next action: run the added provenance regression, commit the tested implementation,
-then rebuild/install and rerun core/isolation gates with that exact revision; obtain a
-separate read-only code review and generate the acceptance report from actual JUnit XML.
+Independent read-only audit of exact `f5bc705` found a cancelled-before-dispatch
+launch race and shared-content lineage mixing. Repairs add permanent cancellation
+tombstones/dispatch locks, separate raw content from occurrence provenance, reject
+conflicting lineage, and reject classification downgrades. Core regressions above
+pass; audit reproduction remains external at
+`/private/tmp/kestrel-independent-review-fxaOwH/audit/`.
+
+Exact next action: commit the tested review repairs, then serially rerun core,
+rebuilt clean install and actual Docker tests for that commit; generate the release
+report from those actual XML records and write final limitations/next operator gate.

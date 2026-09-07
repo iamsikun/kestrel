@@ -211,3 +211,25 @@ def test_duplicate_json_fields_in_bundle_rejected(store, tmp_path):
         archive.writestr("manifest.json", '{"schema_version":"0.1","schema_version":"9.0","artifacts":[]}')
     with pytest.raises(ArtifactError, match="duplicate JSON"):
         store.import_bundle(bundle)
+
+
+@pytest.mark.acceptance("A39")
+@pytest.mark.acceptance("A45")
+def test_identical_content_cannot_union_unrelated_provenance(store, tmp_path):
+    a = store.put_bytes(b"parent A", producer="campaign-a")
+    b = store.put_bytes(b"parent B", producer="campaign-b")
+    one = store.put_bytes(b"same output", producer="attempt-a", lineage=[a["digest"]])
+    with pytest.raises(ArtifactError, match="distinct occurrence"):
+        store.put_bytes(b"same output", producer="attempt-b", lineage=[b["digest"]])
+    bundle = store.export_bundle(tmp_path / "only-a.zip", [one["digest"]])
+    with zipfile.ZipFile(bundle) as archive:
+        assert f"objects/{b['digest']}" not in archive.namelist()
+
+
+@pytest.mark.acceptance("A45")
+def test_lineage_cannot_launder_restricted_classification(store):
+    parent = store.put_bytes(b"restricted synthetic sentinel", producer="other-project",
+                             classification="restricted")
+    with pytest.raises(ArtifactError, match="classification"):
+        store.put_bytes(b"purported public derivative", producer="worker",
+                        lineage=[parent["digest"]], classification="public_synthetic")

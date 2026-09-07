@@ -1,7 +1,11 @@
+import hashlib
+import os
+from pathlib import Path
+
 import pytest
 
 from kestrel.agents import AgentTask, MockAgent
-from kestrel.contracts import canonical
+from kestrel.contracts import canonical, parse_json
 from kestrel.provider_records import read_claude, read_codex
 
 
@@ -80,3 +84,28 @@ def test_task_identity_and_usage_cannot_be_forged():
     events[-1]["usage"]["input_tokens"] = -1
     with pytest.raises(ValueError):
         read(events)
+
+
+@pytest.mark.acceptance("A28")
+def test_actual_captured_provider_responses_share_typed_boundary():
+    directory = os.environ.get("KESTREL_PUBLIC_PROVIDER_CAPTURES")
+    if not directory:
+        pytest.skip("A28 requires actual sanitized public-synthetic Codex and Claude captures; documentation fixtures are not captures")
+    root = Path(directory).resolve(strict=True)
+    manifest = parse_json((root / "manifest.json").read_bytes(), max_bytes=65536)
+    assert manifest["classification"] == "public_synthetic"
+    assert set(manifest["providers"]) == {"codex", "claude"}
+    capture_task = AgentTask.model_validate(manifest["task"])
+    outputs = []
+    for provider, reader in (("codex", read_codex), ("claude", read_claude)):
+        record = manifest["providers"][provider]
+        assert record["provenance"] == "actual_sanitized_capture"
+        assert record["version"] and not any(word in record["version"].lower() for word in ("synthetic", "unverified", "documentation"))
+        capture = root / f"{provider}.json"
+        assert not capture.is_symlink() and capture.stat().st_size <= capture_task.max_output_bytes
+        payload = capture.read_bytes()
+        assert hashlib.sha256(payload).hexdigest() == record["sha256"]
+        outputs.append(reader(capture_task, payload, provider_version=record["version"],
+                              source="captured_recording"))
+    assert all(result.status == "completed" and result.proposals for result in outputs)
+    assert all(result.calls == result.tokens == 0 for result in outputs)
