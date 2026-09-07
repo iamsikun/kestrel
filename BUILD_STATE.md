@@ -1,5 +1,25 @@
 # Build state
 
+Telegram messaging T0 (2026-09-07): read-only briefings implemented on
+`build/telegram-messaging`, branched from the planning branch tip `b944687`
+(which carries an unrelated local installation note above `28ec895`; that work is
+preserved, not dropped). New modules `src/kestrel/reporting.py`,
+`src/kestrel/sources.py`, `src/kestrel/briefings.py`, a `kestrel --lab L brief
+--since --format json|markdown|plain` CLI branch that never constructs `Lab`, a
+separate `specs/messaging-acceptance.json` inventory, and `tests/test_briefings.py`.
+`Lab.report` now delegates to the shared `build_report`; its output is unchanged.
+Commands and results:
+`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`
+exit 0; `python3 tools/validate_pack.py` exit 0 (20 files, 46 requirements
+unchanged); `git diff --check` exit 0;
+`KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q`
+— 274 passed, 1 skipped (A28), 12 deselected, exit 0, against the 249-pass
+baseline. Evidence: `/private/tmp/kestrel-telegram-messaging/`.
+No bot, credential, message, host service, deployment, live provider, permission
+change or push occurred; the read-only reader is an application boundary, not a
+measured OS one. Next action: T1, the assistant database, projection, rules,
+milestones, schedules and durable inbox.
+
 Local installation (2026-09-07): user requested installation and an empty lab at
 `/Users/iamsikun/research/sklab`. Built source revision
 `28ec895ee6335975ee9423a343ffcf70d337984e` with `uv build --offline` (exit 0),

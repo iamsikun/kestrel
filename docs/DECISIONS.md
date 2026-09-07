@@ -194,3 +194,45 @@ this revision has an author who cannot also be its independent review.
   Real egress requires reviewed operator grants and a measured identity boundary;
   the development campaign token cannot enable it. Bot credentials remain gateway
   authority and are not claimed to enforce recipient restrictions themselves.
+
+## 2026-09-07 — Telegram messaging implementation (T0: read-only briefings)
+
+Implementation was authorized for local development only. Creating a bot,
+obtaining credentials, sending a message, installing a host service, deploying a
+controller, enabling a live provider, expanding permissions, and pushing all
+remain unauthorized and undone.
+
+- One verified report interpretation now lives in `reporting.py`. `Lab.report`
+  delegates to `build_report`, so the messaging surface cannot present a
+  conclusion the authoritative report would refuse. Extraction is behaviour
+  preserving: the existing tamper, attribution, invalidation and outcome-label
+  regressions pass unchanged, including the in-place assurance assignment that
+  precedes an evidence downgrade and the rule that a substantive finding is
+  rendered only when assurance is `independently_recomputed`.
+- `sources.py` opens the controller and evidence databases with `mode=ro` plus
+  `PRAGMA query_only`, validates the controller `user_version` and the evidence
+  table set, and issues only bounded `SELECT`s. It never reuses `Lab`,
+  `Controller` or `Artifacts` constructors, which create directories, run DDL,
+  set write pragmas and open a metadata write transaction. Operator credential
+  metadata and the memory table are not observable through it at all; raw SQL
+  reads would bypass the controller's memory authorization rules.
+- This is an application-level boundary. A read-only connection to a live WAL
+  database still maps the shared-memory index, so the `-shm` file's modification
+  time changes even though no database content does. Tests therefore assert
+  unchanged logical content rather than unchanged sidecar timestamps, and actual
+  write denial remains a deployment-profile property, not a Python property.
+- Source identity binds to the first append-only event row rather than a path,
+  inode or modification time, because the controller has no durable source ID
+  and triggers forbid updating or deleting events. Feed cutoffs are a per-store
+  vector; no global snapshot transaction is claimed.
+- A briefing renders only allowlisted typed fields with a named derivation.
+  Reservations are stated as charged, never as measured runtime or cost. Signals
+  with no producer — host telemetry, monetary cost, reading and acknowledgement,
+  literature coverage — are listed as unavailable instead of zero. A campaign
+  whose evidence fails verification becomes a bounded integrity item; it never
+  keeps a previously green label.
+- Messaging acceptance conditions live in the separate
+  `specs/messaging-acceptance.json` and are emitted under a distinct JUnit
+  property. The pinned first-pilot inventory, its manifest and `validate_pack`
+  are unchanged; an unknown ID under the pinned `acceptance` property would
+  otherwise become a release-gate integrity diagnostic.

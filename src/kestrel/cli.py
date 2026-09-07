@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import platform
 import sys
@@ -10,6 +11,7 @@ from pathlib import Path
 
 from kestrel import __version__
 from kestrel.application import Lab, demo
+from kestrel.briefings import brief
 from kestrel.conformance import run_conformance
 from kestrel.projects import load_sidecar
 from kestrel.runners import DriverError
@@ -20,9 +22,27 @@ def doctor() -> dict:
             "core": "available; run verification suite for acceptance evidence",
             "development": "trusted generated fixtures only; no adversarial isolation",
             "isolated_local": "not enabled by developer CLI; actual runtime/audit gates required",
+            "messaging": "briefings implemented read-only; Telegram delivery not activated",
             "live_agent": "blocked: no authorized provider/credential integration",
             "gpu": "blocked: no authorized target hardware validation",
             "deployment": "not authorized or implemented"}
+
+
+def parse_instant(value: str | None) -> float | None:
+    """Accept UTC epoch seconds or an explicit ISO-8601 instant."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    try:
+        moment = datetime.datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("--since needs epoch seconds or an ISO-8601 instant") from exc
+    if moment.tzinfo is None:
+        raise ValueError("--since ISO-8601 instants require an explicit UTC offset")
+    return moment.timestamp()
 
 
 def parser() -> argparse.ArgumentParser:
@@ -60,6 +80,10 @@ def parser() -> argparse.ArgumentParser:
             action_parser.add_argument("--operator-token-file", type=Path, required=True)
         if action == "run":
             action_parser.add_argument("--approval", required=True)
+    briefing = commands.add_parser("brief", help="read-only briefing from verified records")
+    briefing.add_argument("--since", help="UTC epoch seconds or ISO-8601 instant")
+    briefing.add_argument("--format", dest="form", choices=("json", "markdown", "plain"),
+                          default="json")
     evidence = commands.add_parser("evidence").add_subparsers(dest="action", required=True)
     export = evidence.add_parser("export")
     export.add_argument("campaign")
@@ -90,6 +114,12 @@ def main(argv: list[str] | None = None) -> int:
                 with Lab(args.lab) as lab:
                     result = run_conformance(lab, args.manifest, args.campaign, args.approval,
                                              profile=args.profile)
+        elif args.command == "brief":
+            # Read-only path: never construct Lab, which would initialize
+            # writable stores, a driver and agent state.
+            if args.lab is None:
+                raise ValueError("Supply --lab PATH before the command")
+            result = brief(args.lab, since=parse_instant(args.since), form=args.form)
         else:
             if args.lab is None:
                 raise ValueError("Supply --lab PATH before the command")
@@ -122,7 +152,8 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     result = {"artifacts": lab.store.import_bundle(args.bundle),
                               "assurance": "imported; not independently executed"}
-        print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
+        print(result if isinstance(result, str)
+              else json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
         return 0
     except (ValueError, OSError, DriverError, KeyError) as exc:
         print(json.dumps({"error": type(exc).__name__, "message": str(exc)}), file=sys.stderr)

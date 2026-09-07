@@ -16,6 +16,11 @@ def pytest_collection_modifyitems(items):
     for item in items:
         for marker in item.iter_markers("acceptance"):
             item.user_properties.append(("acceptance", marker.args[0]))
+        # Messaging conditions are a separate proposed inventory. They must not
+        # enter the pinned `acceptance` property, where an unknown ID becomes a
+        # release-gate integrity diagnostic.
+        for marker in item.iter_markers("messaging"):
+            item.user_properties.append(("messaging_acceptance", marker.args[0]))
 
 
 @pytest.hookimpl(tryfirst=True)

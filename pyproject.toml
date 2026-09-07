@@ -21,7 +21,7 @@ dev = ["pytest>=8.4,<10", "hypothesis>=6.140,<7", "ruff>=0.13,<1", "pytest-socke
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--disable-socket"
-markers = ["acceptance(id): first-pilot acceptance requirement", "isolation: measured Docker tests requiring explicit invocation", "install: clean external wheel installation"]
+markers = ["acceptance(id): first-pilot acceptance requirement", "messaging(id): proposed messaging acceptance condition, separate from the pinned inventory", "isolation: measured Docker tests requiring explicit invocation", "install: clean external wheel installation", "live: separately authorized live Telegram integration; never part of routine runs"]
 
 [tool.ruff]
 line-length = 100
