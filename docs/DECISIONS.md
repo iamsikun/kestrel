@@ -236,3 +236,41 @@ remain unauthorized and undone.
   property. The pinned first-pilot inventory, its manifest and `validate_pack`
   are unchanged; an unknown ID under the pinned `acceptance` property would
   otherwise become a release-gate integrity diagnostic.
+
+## 2026-09-07 — Telegram messaging T1 (durable assistant state)
+
+- The assistant owns a separately migrated database in its own external
+  directory. Messaging state is never placed inside the lab or the framework
+  checkout, and the four ownership domains (assistant-private,
+  notification-export, telegram-runtime, telegram-secrets) are created as
+  distinct directories so a deployment can assign them distinct identities.
+  Creating them installs no service and provisions no credential.
+- Projection recomputes current conditions from source state and diffs them
+  against recorded revisions, rather than replaying an event stream into item
+  mutations. Replay is therefore idempotent by construction, clock-derived
+  conditions (approval expiry, held capacity, expired leases) need no source
+  event, and resolution is always read back from the source rather than
+  inferred from an acknowledgement.
+- Source identity binds to the first append-only controller event. A replaced,
+  restored or truncated ledger produces a `source_continuity` gap that pauses
+  projection until an operator runs an explicit rebind, which opens a new epoch
+  and retains the historical inbox. Continuity is never inferred from a path or
+  a file modification time.
+- The first projection backfills the inbox and emits exactly one summary intent.
+  Historical events are not replayed as notifications.
+- A milestone is a finite conjunction of typed predicates over explicit campaign
+  IDs, evaluated through the shared verified report. There is no expression, SQL
+  or "queue empty" form, an unreached milestone is never announced, an
+  invalidation reopens a reached one, and each definition change is a new
+  immutable version.
+- Schedules persist the IANA zone, intended local date, preference version and
+  next due instant. A skipped local time resolves to the next instant that
+  actually exists, found by bisecting the offset change; an ambiguous local time
+  uses its first occurrence; a run that spans missed days emits one catch-up
+  occurrence rather than a week of mornings; and a clock rollback cannot repeat a
+  delivered occurrence.
+- Quiet hours defer release rather than suppress an item, with no automatic
+  overnight bypass. Only conditions the operator lists explicitly may interrupt.
+- Route is part of item identity, so promoting a completion from digest to timely
+  by adding a watch resolves the digest item and opens a distinct watched one
+  instead of silently rewriting a recorded revision.

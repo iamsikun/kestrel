@@ -3,7 +3,7 @@
   "status": "proposed_messaging_requirements_not_implementation_results",
   "note": "Separate from the integrity-pinned first-pilot inventory in specs/acceptance.json. These IDs are never emitted under the JUnit 'acceptance' property; tests carry them under 'messaging_acceptance' via the pytest 'messaging' marker.",
   "source": "docs/proposals/MESSAGING.md section 12",
-  "implemented_slices": ["T0"],
+  "implemented_slices": ["T0", "T1"],
   "tests": [
     {"id": "N-A01", "slice": "T2", "gate": "core", "requirement": "Worker files, adapter outputs, and model proposals cannot directly send, choose destinations, or write the authoritative inbox/outbox. Only validated source conditions generate intents."},
     {"id": "N-A02", "slice": "T2", "gate": "core", "requirement": "Above-ceiling content, including identifiers and hashes, never reaches an external sink; metadata fallback needs its own explicit permission."},

@@ -1,5 +1,23 @@
 # Build state
 
+Telegram messaging T1 (2026-09-07): durable assistant state on
+`build/telegram-messaging`. New `src/kestrel/messaging.py` with its own migrated
+SQLite schema (source bindings, items and revisions, attention history,
+subscriptions, versioned milestones, schedules, occurrences, briefings, intents,
+processed requests, gaps), deterministic projection and rule engine, DST-correct
+daily schedule with single catch-up, quiet-hour deferral, typed milestone
+predicates, and `notify`/`inbox` CLI branches under a new `--messaging-root`.
+`tests/test_messaging.py` adds 42 cases. Commands and results:
+`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`
+exit 0; `python3 tools/validate_pack.py` exit 0; `git diff --check` exit 0;
+`KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q`
+— 316 passed, 1 skipped (A28), 12 deselected, exit 0. Evidence:
+`/private/tmp/kestrel-telegram-messaging/core-t1.xml`.
+No envelope is exported and no transport exists yet; nothing was sent, no bot or
+credential exists, and no service, deployment or permission changed. Next action:
+T2, the approved-envelope spool, service grant, delivery state machine and fake
+transport.
+
 Telegram messaging T0 (2026-09-07): read-only briefings implemented on
 `build/telegram-messaging`, branched from the planning branch tip `b944687`
 (which carries an unrelated local installation note above `28ec895`; that work is
