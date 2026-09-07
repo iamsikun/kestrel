@@ -280,7 +280,11 @@ def render_notification(intent: dict[str, Any], *, grant: Grant,
     """
     payload = intent["payload"]
     purpose = intent["purpose"]
-    classification = _worst(list(payload.get("classifications", ["public_synthetic"])))
+    labels = payload.get("classifications")
+    if not isinstance(labels, list) or not labels or any(
+            label not in CLASSIFICATION_ORDER for label in labels):
+        raise DisclosureRefused("Missing or invalid disclosure provenance")
+    classification = _worst(labels)
     if CLASSIFICATION_ORDER.index(classification) > CLASSIFICATION_ORDER.index(
             grant.disclosure_ceiling):
         # Identifiers, digests and "there is an update" are still disclosure.
@@ -368,7 +372,7 @@ def _atomic_write(directory: Path, name: str, data: bytes) -> Path:
             os.fsync(stream.fileno())
         if Path(temporary).read_bytes() != data:
             raise DeliveryError("Envelope verification failed before publication")
-        os.chmod(temporary, 0o600)
+        os.chmod(temporary, 0o640)
         os.replace(temporary, target)
     finally:
         if os.path.exists(temporary):
@@ -491,6 +495,16 @@ class Exporter:
                                "hard_daily": grant.hard_daily_cap}}
         _atomic_write(self.export, "channel.json", canonical(policy))
 
+    def publish_routing(self) -> None:
+        """Export only confirmed Telegram identity, never private config/state."""
+        fields = {key: self.assistant._meta(f"telegram_{key}")
+                  for key in ("bot_id", "chat_id", "user_id", "epoch")}
+        if any(value is None for value in fields.values()):
+            return
+        routing = {"routing_version": ENVELOPE_VERSION,
+                   **{key: int(value) for key, value in fields.items()}}
+        _atomic_write(self.export, "routing.json", canonical(routing))
+
     # -- export --------------------------------------------------------
 
     def export_pending(self, *, now: float | None = None) -> dict[str, Any]:
@@ -584,6 +598,21 @@ class Exporter:
                 "UPDATE intents SET state='SUPPRESSED', reason=?, updated_at=? WHERE id=?",
                 (reason, now, intent["id"]))
 
+    def _projection_deadline(self, *, now: float) -> float | None:
+        status = self.assistant.status(now=now)
+        if status["projection_stale"] or set(status["bindings"]) != {"controller", "evidence"}:
+            return None
+        try:
+            with self.assistant.sources() as src:
+                for feed in ("controller", "evidence"):
+                    check = self.assistant._check_binding(feed, getattr(src, feed), now=now)
+                    if check["status"] != "bound" or check["head"] != check.get("cursor"):
+                        return None
+        except (ValueError, OSError, sqlite3.Error):
+            return None
+        return min(row["updated_at"] for row in status["bindings"].values()) + \
+            self.assistant.config.projection_freshness_seconds
+
     def refresh_permits(self, *, now: float | None = None) -> dict[str, Any]:
         """Re-issue short-lived release permits for still-valid envelopes.
 
@@ -596,18 +625,31 @@ class Exporter:
         issued, withdrawn = [], []
         for permit in sorted(self.permits.glob("*.json")):
             permit.unlink()
-        if active is None or self.assistant.paused():
+        deadline = self._projection_deadline(now=now)
+        if active is None or self.assistant.paused() or deadline is None:
             self._publish_channel_policy(now=now)
             return {"issued": [], "withdrawn": ["all"], "reason": "no releasable authority"}
         grant, channel = active
+        self.publish_routing()
+        self._publish_channel_policy(now=now)
         for row in self.assistant._db.execute(
                 "SELECT * FROM envelopes ORDER BY created_at,id"):
             intent = self.assistant._db.execute(
-                "SELECT state FROM intents WHERE id=?", (row["intent_id"],)).fetchone()
+                "SELECT * FROM intents WHERE id=?", (row["intent_id"],)).fetchone()
             if row["expires_at"] <= now or intent is None \
-                    or intent[0] not in ("READY", "PENDING") \
+                    or intent["state"] not in ("READY", "PENDING") \
                     or row["grant_id"] != grant.grant_id or row["grant_version"] != grant.version \
                     or row["channel_version"] != channel.version:
+                withdrawn.append(row["id"])
+                continue
+            try:
+                rendered = render_notification(
+                    {**dict(intent), "payload": parse_json(intent["payload"])},
+                    grant=grant, channel=channel)
+                if rendered["classification"] != row["classification"]:
+                    withdrawn.append(row["id"])
+                    continue
+            except (DisclosureRefused, ValueError):
                 withdrawn.append(row["id"])
                 continue
             permit = {"permit_version": ENVELOPE_VERSION, "envelope": row["id"],
@@ -615,7 +657,9 @@ class Exporter:
                       "channel_id": row["channel_id"],
                       "channel_version": row["channel_version"],
                       "grant_id": row["grant_id"], "grant_version": row["grant_version"],
-                      "issued_at": now, "expires_at": now + PERMIT_LIFETIME,
+                      "issued_at": now, "expires_at": min(now + PERMIT_LIFETIME,
+                                                          grant.expires_at, row["expires_at"],
+                                                          deadline),
                       "not_before": row["not_before"]}
             _atomic_write(self.permits, f"{row['id']}.json", canonical(permit))
             issued.append(row["id"])
@@ -757,10 +801,16 @@ class Gateway:
         for directory in (self.export, self.envelopes, self.permits, self.runtime):
             if directory.is_symlink() or not directory.is_dir():
                 raise DeliveryError("Gateway layout is unavailable")
-        self.owner = owner
+        self.owner = f"{owner}:{uuid.uuid4().hex}"
         path = self.runtime / "gateway.sqlite"
         if path.is_symlink():
             raise DeliveryError("Gateway journal must not redirect through a symlink")
+        if not path.exists():
+            try:
+                path.touch(mode=0o660, exist_ok=False)
+                path.chmod(0o660)
+            except FileExistsError:
+                pass
         self._db = sqlite3.connect(path, timeout=10, isolation_level=None)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
@@ -773,6 +823,10 @@ class Gateway:
         self._db.execute(f"PRAGMA user_version={GATEWAY_SCHEMA_VERSION}")
 
     def close(self) -> None:
+        with self._transaction():
+            if not self._db.execute("SELECT 1 FROM deliveries WHERE state='SENDING' "
+                                    "AND lease_owner=?", (self.owner,)).fetchone():
+                self._db.execute("UPDATE sender_lease SET until=0 WHERE owner=?", (self.owner,))
         self._db.close()
 
     def __enter__(self) -> Gateway:
@@ -805,6 +859,18 @@ class Gateway:
             # Fail closed: unavailable policy is not permission.
             return {"active": False, "reason": "channel policy unavailable"}
         return parse_json(path.read_bytes(), max_bytes=64 * 1024)
+
+    def routing(self) -> dict[str, Any]:
+        path = self.export / "routing.json"
+        if path.is_symlink() or not path.is_file():
+            raise DeliveryError("No confirmed Telegram routing is published")
+        record = parse_json(path.read_bytes(), max_bytes=4096)
+        keys = {"bot_id", "chat_id", "user_id", "epoch"}
+        if not isinstance(record, dict) or set(record) != keys | {"routing_version"} \
+                or record["routing_version"] != ENVELOPE_VERSION \
+                or any(type(record[key]) is not int or record[key] <= 0 for key in keys):
+            raise DeliveryError("Invalid Telegram routing record")
+        return record
 
     def read_envelope(self, identity: str) -> dict[str, Any] | None:
         if not re.fullmatch(r"env-[0-9a-f]{32}", identity):
@@ -944,13 +1010,18 @@ class Gateway:
         if kind == "reply":
             if usage.get("reply", 0) >= caps.get("daily_reply", 20):
                 return "daily reply cap reached"
+            recent = self._db.execute(
+                "SELECT COUNT(*) FROM delivery_attempts a JOIN deliveries d "
+                "ON d.envelope_id=a.envelope_id WHERE d.purpose LIKE 'reply:%' "
+                "AND a.started_at>?", (now - 60,)).fetchone()[0]
+            if recent >= caps.get("reply_per_minute", 5):
+                return "per-minute reply cap reached"
         else:
             automated = usage.get("automated", 0) + usage.get("critical", 0)
             cap = caps.get("daily_automated", 20)
-            if kind == "critical":
-                if automated >= cap:
-                    return "daily automated cap reached"
-            else:
+            if automated >= cap:
+                return "daily automated cap reached"
+            if kind != "critical":
                 ordinary_cap = max(0, cap - caps.get("reserved_critical", 5))
                 if usage.get("automated", 0) >= ordinary_cap:
                     return "daily automated cap reached, reserving the critical allowance"
@@ -962,29 +1033,49 @@ class Gateway:
     # -- dispatch --------------------------------------------------------
 
     def dispatch_once(self, transport: Transport, *, now: float | None = None,
-                      limit: int = 10) -> dict[str, Any]:
-        now = time.time() if now is None else now
+                      limit: int = 10, clock=None) -> dict[str, Any]:
+        # An OS file lock excludes other local senders even if a slow request
+        # outlives its database lease. It is not a provider-side request fence.
+        import fcntl
+        path = self.runtime / "sender.lock"
+        descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o660)
+        try:
+            if os.fstat(descriptor).st_uid == os.geteuid():
+                os.fchmod(descriptor, 0o660)
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return {"sent": [], "terminal": [],
+                        "deferred": [{"reason": "another sender holds the lock"}]}
+            clock = clock or (time.time if now is None else lambda: now)
+            return self._dispatch_locked(transport, clock=clock, limit=limit)
+        finally:
+            os.close(descriptor)
+
+    def _dispatch_locked(self, transport: Transport, *, clock, limit: int) -> dict[str, Any]:
+        now = clock()
         result: dict[str, Any] = {"sent": [], "deferred": [], "terminal": []}
         if not self.acquire(now=now):
             result["deferred"].append({"reason": "another sender holds the lease"})
             return result
-        policy = self.policy()
-        for delivery in self.deliveries():
-            if delivery["state"] in TERMINAL_DELIVERY:
+        candidates = [row for row in self.deliveries()
+                      if row["state"] in ("PENDING", "READY", "RETRY_WAIT")]
+        for candidate in candidates[:limit]:
+            now = clock()
+            identity = candidate["envelope_id"]
+            # Re-read all authority and eligibility immediately before a claim.
+            delivery = self.delivery(identity)
+            if delivery["state"] not in ("PENDING", "READY", "RETRY_WAIT"):
                 continue
             if delivery["expires_at"] <= now:
-                self._settle(delivery["envelope_id"], "EXPIRED", "intent expiry elapsed",
-                             now=now)
-                result["terminal"].append({"envelope": delivery["envelope_id"],
-                                           "state": "EXPIRED"})
-        candidates = [row for row in self.deliveries()
-                      if row["state"] in ("PENDING", "READY", "RETRY_WAIT")
-                      and row["next_eligible"] <= now and row["not_before"] <= now]
-        for delivery in candidates[:limit]:
-            identity = delivery["envelope_id"]
-            if not policy.get("active"):
-                self._settle(identity, "REVOKED",
-                             f"channel policy inactive: {policy.get('reason', 'unknown')}",
+                self._settle(identity, "EXPIRED", "intent expiry elapsed", now=now)
+                result["terminal"].append({"envelope": identity, "state": "EXPIRED"})
+                continue
+            if delivery["next_eligible"] > now or delivery["not_before"] > now:
+                continue
+            policy = self.policy()
+            if not policy.get("active") or policy.get("grant", {}).get("expires_at", 0) <= now:
+                self._settle(identity, "REVOKED", "channel policy inactive or grant expired",
                              now=now)
                 result["terminal"].append({"envelope": identity, "state": "REVOKED"})
                 continue
@@ -1000,10 +1091,12 @@ class Gateway:
                              now=now)
                 result["terminal"].append({"envelope": identity, "state": "SUPPRESSED"})
                 continue
-            if permit["grant_version"] != policy["grant"]["version"] \
-                    or permit["channel_version"] != policy["channel"]["version"]:
-                self._settle(identity, "REVOKED", "grant or channel version superseded",
-                             now=now)
+            if any(permit[key] != expected for key, expected in (
+                    ("grant_id", policy["grant"]["grant_id"]),
+                    ("grant_version", policy["grant"]["version"]),
+                    ("channel_id", policy["channel"]["channel_id"]),
+                    ("channel_version", policy["channel"]["version"]))):
+                self._settle(identity, "REVOKED", "grant or channel superseded", now=now)
                 result["terminal"].append({"envelope": identity, "state": "REVOKED"})
                 continue
             if body["channel"]["identity"] != policy["channel"]["identity"]:
@@ -1012,27 +1105,42 @@ class Gateway:
                 result["terminal"].append({"envelope": identity, "state": "SUPPRESSED"})
                 continue
             kind = ("critical" if delivery["route"] == "critical"
-                    else "reply" if delivery["purpose"].startswith("reply")
-                    else "automated")
+                    else "reply" if delivery["purpose"].startswith("reply") else "automated")
             with self._transaction():
-                refusal = self._charge(kind, policy.get("caps", {}), now=now)
+                lease = self._db.execute("SELECT * FROM sender_lease WHERE id=1").fetchone()
+                current = self.delivery(identity)
+                if not lease or lease["owner"] != self.owner or lease["until"] <= now:
+                    result["deferred"].append({"reason": "sender lease lost"})
+                    break
+                if current["state"] != delivery["state"] or \
+                        current["transmissions"] != delivery["transmissions"]:
+                    continue
+                last = self._db.execute("SELECT MAX(started_at) FROM delivery_attempts").fetchone()[0]
+                refusal = None
+                eligible = self._next_day(now)
+                if last is not None and now < last + 1:
+                    refusal, eligible = "one-message-per-second pacing", last + 1
+                if refusal is None:
+                    refusal = self._charge(kind, policy.get("caps", {}), now=now)
+                    if refusal == "per-minute reply cap reached":
+                        eligible = now + 60
                 if refusal:
                     self._db.execute(
                         "UPDATE deliveries SET state='PENDING', reason=?, next_eligible=?, "
-                        "updated_at=? WHERE envelope_id=?",
-                        (refusal, self._next_day(now), now, identity))
+                        "updated_at=? WHERE envelope_id=?", (refusal, eligible, now, identity))
                 else:
-                    # SENDING is committed before the provider is called, so a
-                    # crash from here on is an unknown outcome, not a free retry.
-                    self._db.execute(
+                    claimed = self._db.execute(
                         "UPDATE deliveries SET state='SENDING', transmissions=transmissions+1,"
-                        " reason=NULL, lease_owner=?, updated_at=? WHERE envelope_id=?",
-                        (self.owner, now, identity))
+                        " reason=NULL, lease_owner=?, updated_at=? WHERE envelope_id=? "
+                        "AND state=? AND transmissions=?",
+                        (self.owner, now, identity, delivery["state"],
+                         delivery["transmissions"])).rowcount
+                    if claimed != 1:
+                        raise DeliveryError("Delivery claim changed during transaction")
                     self._db.execute(
                         "INSERT INTO delivery_attempts(envelope_id,transmission,outcome,"
                         "detail,lease_owner,started_at) VALUES (?,?,?,?,?,?)",
-                        (identity, delivery["transmissions"] + 1, "sending", "", self.owner,
-                         now))
+                        (identity, delivery["transmissions"] + 1, "sending", "", self.owner, now))
             if refusal:
                 result["deferred"].append({"envelope": identity, "reason": refusal})
                 continue

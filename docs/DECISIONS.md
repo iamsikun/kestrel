@@ -1,5 +1,33 @@
 # Implementation decisions
 
+## 2026-09-07 — Telegram audit repairs
+
+- Research-derived notifications conservatively inherit classifications from the
+  whole lab, including artifacts without a campaign. This may suppress a public
+  campaign's message when unrelated restricted material exists. Narrower source
+  attribution needs separate implementation and tests; no metadata exception is
+  inferred. Only fixed help/stop/resume replies are independent of research data.
+  Missing renderer provenance fails closed, including renewal of legacy envelopes.
+- Transport briefs omit the lab path; full local records retain it and release
+  scanning remains unchanged. Daily scheduling still requires the documented
+  explicit local schedule-setting step.
+- Gateway CLI paths use only approved export records and their journal. Routing
+  exports confirmed bot/chat/user numeric identities and the epoch. Export files
+  use 0640; shared SQLite/lock files use 0660. Deployment supplies ownership and
+  setgid groups; code does not change host users or expand gateway private access.
+- Unique sender ownership, an OS file lock and conditional database claims
+  exclude local overlapping sends, even after lease expiry. The lock is not a
+  Telegram request fence. Ambiguous sends remain ineligible for automatic retry.
+- Pacing defers queued messages instead of sleeping: attempts start at least one
+  second apart. A rolling 60-second reply count survives restarts. Combined
+  automated quotas include critical attempts in either arrival order. The storm
+  test now advances synthetic time while preserving its daily-cap assertions;
+  the unknown-template test supplies valid provenance to reach its intended check.
+- Permit renewal requires fresh bound projections caught up to source heads.
+  Grant, intent and projection deadlines all bound permit expiry. Dispatch reads
+  time/policy per candidate. Failed inbound persistence holds the batch cursor;
+  only a durably existing identity qualifies as a replay.
+
 ## 2026-09-06 — first pilot
 
 - Preserve the supplied specification files and their integrity manifest unchanged.

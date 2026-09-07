@@ -37,7 +37,9 @@ because Telegram's addresses are not stable; see the egress note below.
 | `ownership.md` | the file ownership and permission matrix these units assume |
 
 Every unit is `Type=oneshot` driven by a timer, so there is no bespoke daemon
-loop to review. The local sender lease still prevents two senders overlapping.
+loop to review. A local OS file lock excludes overlapping dispatch; a unique
+sender lease and conditional claims protect the durable delivery transitions.
+Neither mechanism provides a provider-side request fence.
 
 ## Egress restriction is not solved here
 

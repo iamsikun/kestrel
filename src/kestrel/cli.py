@@ -63,14 +63,6 @@ def inbound_command(args, assistant) -> dict:
         raise MessagingError("No Telegram chat is paired and confirmed")
     epoch = int(assistant._meta("telegram_epoch", "1"))
     with Gateway(args.messaging_root, owner="poller") as gateway:
-        if args.target == "poll":
-            client = build_live_client(args.credential_file, channel="telegram",
-                                       operation="notify inbound poll")
-            poller = InboundPoller(gateway, client, bot_identity=identity["bot_id"],
-                                   epoch=epoch, chat_id=int(identity["chat_id"]),
-                                   user_id=int(identity["user_id"]))
-            return {**poller.poll_once(now=time.time(), timeout=args.timeout),
-                    "authority": "reads inbound updates; applies nothing by itself"}
         poller = InboundPoller(gateway, None, bot_identity=identity["bot_id"], epoch=epoch,
                                chat_id=int(identity["chat_id"]),
                                user_id=int(identity["user_id"]))
@@ -83,20 +75,65 @@ def inbound_command(args, assistant) -> dict:
                              "reachable from an inbound message"}
 
 
-def build_transport(args, assistant):
+def build_transport(args, gateway):
     """Select a dispatch transport. Live Telegram is gated, never a default."""
     if args.transport == "fake":
         return FakeTransport()
     if args.transport == "none":
         return NoEgressTransport()
-    chat = assistant._meta("telegram_chat_id")
-    if chat is None:
-        raise MessagingError("No Telegram chat is paired and confirmed")
+    chat = gateway.routing()["chat_id"]
+    policy = gateway.policy()
+    if policy.get("channel", {}).get("identity") != str(chat) or \
+            policy.get("channel", {}).get("transport") != "telegram":
+        raise MessagingError("Published channel and Telegram routing disagree")
     if args.credential_file is None:
         raise MessagingError("Supply --credential-file for the telegram transport")
     client = build_live_client(args.credential_file, channel="telegram",
                                operation="notify gateway dispatch --transport telegram")
     return TelegramTransport(client=client, expected_chat_id=int(chat))
+
+
+def gateway_command(args) -> dict:
+    """Gateway entry points never open private assistant configuration/state."""
+    if args.action == "delivery":
+        with Gateway(args.messaging_root, owner="cli") as gateway:
+            if args.target == "list":
+                return {"deliveries": gateway.deliveries(),
+                        "authority": "gateway journal read only"}
+            return {"delivery": gateway.delivery(args.envelope),
+                    "attempts": gateway.attempts(args.envelope),
+                    "authority": "gateway journal read only"}
+    if args.action == "gateway":
+        with Gateway(args.messaging_root, owner="cli") as gateway:
+            if args.target == "intake":
+                return {**gateway.intake(), "authority": "reads approved envelopes only"}
+            if args.target == "health":
+                return {**gateway.health(), "authority": "gateway journal read only"}
+            if args.target == "recover":
+                return {**gateway.recover(),
+                        "authority": "gateway journal only; no message is resent"}
+            transport = build_transport(args, gateway)
+            return {**gateway.dispatch_once(transport),
+                    "transport": transport.name,
+                    "authority": ("live Telegram delivery under an explicit operator "
+                                  "activation" if transport.name == "telegram"
+                                  else "offline transport only; live delivery is a "
+                                       "separate, unauthorized gate")}
+    if args.action == "inbound":
+        with Gateway(args.messaging_root, owner="poller") as gateway:
+            routing = gateway.routing()
+            client = (build_live_client(args.credential_file, channel="telegram",
+                                        operation="notify inbound poll")
+                      if args.target == "poll" else None)
+            poller = InboundPoller(gateway, client, bot_identity=str(routing["bot_id"]),
+                                   epoch=routing["epoch"], chat_id=routing["chat_id"],
+                                   user_id=routing["user_id"])
+            if args.target == "poll":
+                return {**poller.poll_once(now=time.time(), timeout=args.timeout),
+                        "authority": "journals inbound updates; applies nothing"}
+            return {"pending": poller.pending(), "rejected": poller.rejections(),
+                    "cursor": poller.cursor(), "gaps": gateway.gaps()}
+    raise MessagingError("Unsupported gateway command")
 
 
 def messaging_command(args) -> dict:
@@ -113,6 +150,9 @@ def messaging_command(args) -> dict:
         return {**init_messaging(args.messaging_root, args.lab, timezone=args.timezone,
                                  brief_local_time=args.brief_time),
                 "authority": "local state only; no grant, credential or egress created"}
+    if args.command == "notify" and (args.action in {"gateway", "delivery"} or
+            (args.action == "inbound" and args.target in {"poll", "journal"})):
+        return gateway_command(args)
     with Assistant(args.messaging_root) as assistant:
         if args.command == "inbox":
             if args.action == "list":
@@ -195,30 +235,6 @@ def messaging_command(args) -> dict:
                                      "resets intent age, retry count or channel quota"}
             return {"permits": sorted(path.name for path in exporter.permits.glob("*.json")),
                     "authority": "local read only"}
-        if args.action == "delivery":
-            with Gateway(args.messaging_root, owner="cli") as gateway:
-                if args.target == "list":
-                    return {"deliveries": gateway.deliveries(),
-                            "authority": "gateway journal read only"}
-                return {"delivery": gateway.delivery(args.envelope),
-                        "attempts": gateway.attempts(args.envelope),
-                        "authority": "gateway journal read only"}
-        if args.action == "gateway":
-            with Gateway(args.messaging_root, owner="cli") as gateway:
-                if args.target == "intake":
-                    return {**gateway.intake(), "authority": "reads approved envelopes only"}
-                if args.target == "health":
-                    return {**gateway.health(), "authority": "gateway journal read only"}
-                if args.target == "recover":
-                    return {**gateway.recover(),
-                            "authority": "gateway journal only; no message is resent"}
-                transport = build_transport(args, assistant)
-                return {**gateway.dispatch_once(transport),
-                        "transport": transport.name,
-                        "authority": ("live Telegram delivery under an explicit operator "
-                                      "activation" if transport.name == "telegram"
-                                      else "offline transport only; live delivery is a "
-                                           "separate, unauthorized gate")}
         if args.action == "telegram":
             if args.target == "inspect":
                 pairing = Pairing(assistant, None)

@@ -1,0 +1,178 @@
+{
+  "daily": {
+    "initial_schedule": null,
+    "daily_count": 1,
+    "refusals": [
+      {
+        "intent": "intent-37ac0607ca774344a9ccb71985820f0d",
+        "reason": "disclosure_refused",
+        "detail": "Rendered content failed release scanning: ['absolute_path']"
+      }
+    ]
+  },
+  "classification": {
+    "intent_classifications": null,
+    "detail_classifications": [
+      "restricted"
+    ],
+    "exported": [
+      {
+        "channel": {
+          "channel_id": "personal",
+          "identity": "4242",
+          "transport": "fake",
+          "version": 1
+        },
+        "classification": "public_synthetic",
+        "content_digest": "0442a4643d77a200e6cdc255e6db49195797c0537064ab594b2904c3abb392ea",
+        "created_at": 1000003.0,
+        "envelope_version": "0.1",
+        "expires_at": 1021602.0,
+        "grant": {
+          "grant_id": "notify_operator",
+          "version": 1
+        },
+        "id": "env-bdb56761cbf8403694b6342e076a683e",
+        "not_before": 1000002.0,
+        "purpose": "item:evidence_correction",
+        "route": "timely",
+        "text": "Kestrel update\nEvidence was marked invalid; 1 record(s) are affected. A conclusion that depended on it is no longer current.\nItem M1-r1. Reservations are charged, not measured. Provider acceptance is not delivery, reading, review, or approval."
+      }
+    ]
+  },
+  "expired_grant": {
+    "grant_expired_at": 1000010.0,
+    "send_time": 1000011.0,
+    "result": {
+      "sent": [
+        {
+          "envelope": "env-7f9c75834a8449d4b93b165b173d5f0f",
+          "outcome": "accepted"
+        }
+      ],
+      "deferred": [],
+      "terminal": []
+    }
+  },
+  "stale_projection": {
+    "stale": true,
+    "refreshed": 1,
+    "result": {
+      "sent": [
+        {
+          "envelope": "env-6a8be38be1614a8eb5db62df1b271f91",
+          "outcome": "accepted"
+        }
+      ],
+      "deferred": [],
+      "terminal": []
+    }
+  },
+  "gateway_boundary": {
+    "cli_exit": 2,
+    "published_modes": {
+      "notification-export/channel.json": "0o600",
+      "notification-export/permits/env-0ce5d500a15e4846833774cc36b9768b.json": "0o600",
+      "notification-export/envelopes/env-0ce5d500a15e4846833774cc36b9768b.json": "0o600"
+    }
+  },
+  "journal_loss": {
+    "result": {
+      "polled": 1,
+      "accepted": 0,
+      "rejected": 0,
+      "duplicates": [
+        8
+      ],
+      "mode": "rebase",
+      "offset_advanced": true,
+      "offset": 9
+    },
+    "rows": 0,
+    "cursor": {
+      "id": 1,
+      "bot_identity": "12345",
+      "epoch": 1,
+      "offset": 9,
+      "mode": "normal",
+      "last_success": 1000000.0,
+      "last_update_at": 1000000.0,
+      "updated_at": 1000000.0
+    }
+  },
+  "forwarded_command": {
+    "normalized": [
+      {
+        "update_id": 8,
+        "message_id": 1,
+        "date": 1000000,
+        "chat_id": 4242,
+        "user_id": 4242,
+        "text": "/stop"
+      },
+      ""
+    ]
+  },
+  "same_owner_leases": [
+    true,
+    true
+  ],
+  "duplicate_send": {
+    "first": {
+      "sent": [
+        {
+          "envelope": "env-e0dac69d9ddc409b879be03c0fb46938",
+          "outcome": "accepted"
+        }
+      ],
+      "deferred": [],
+      "terminal": []
+    },
+    "second": [
+      {
+        "sent": [
+          {
+            "envelope": "env-e0dac69d9ddc409b879be03c0fb46938",
+            "outcome": "accepted"
+          }
+        ],
+        "deferred": [],
+        "terminal": []
+      }
+    ],
+    "deliveries": [
+      {
+        "envelope_id": "env-e0dac69d9ddc409b879be03c0fb46938",
+        "content_digest": "4476dd8d53c7ec5bc986de752f243819facd6a00d22fac1424b3ad584b535cc8",
+        "purpose": "backfill_summary",
+        "route": "timely",
+        "channel_id": "personal",
+        "channel_version": 1,
+        "grant_id": "notify_operator",
+        "grant_version": 1,
+        "state": "ACCEPTED",
+        "transmissions": 2,
+        "next_eligible": 1000000.0,
+        "not_before": 1000000.0,
+        "expires_at": 1086400.0,
+        "provider_reference": "fake-1",
+        "accepted_at": 1000003.0,
+        "reason": "provider accepted the request; not delivery, reading or approval",
+        "lease_owner": "cli",
+        "created_at": 1000002.0,
+        "updated_at": 1000003.0
+      }
+    ]
+  },
+  "automated_cap": {
+    "allowed": 35,
+    "quota": {
+      "day": "1970-01-12",
+      "used": {
+        "automated": 15,
+        "critical": 20
+      },
+      "total": 35
+    }
+  }
+}

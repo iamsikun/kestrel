@@ -1015,6 +1015,20 @@ class Assistant:
                        result: dict, item_id: str | None = None, revision: int | None = None,
                        occurrence_id: str | None = None,
                        respect_quiet_hours: bool = True) -> str | None:
+        # Research-derived views inherit the whole lab conservatively, including
+        # backfill, status/inbox replies and reference-only acknowledgements.
+        # Fixed control replies contain no research observations.
+        labels = set(payload.get("classifications", []))
+        labels.update(payload.get("detail", {}).get("classifications", []))
+        if purpose in {"reply:help", "reply:stop", "reply:resume"}:
+            labels.add("public_synthetic")
+        else:
+            try:
+                with self.sources() as src:
+                    labels.update(src.disclosure_classifications())
+            except (ValueError, OSError, sqlite3.Error):
+                labels.add("restricted")
+        payload = {**payload, "classifications": sorted(labels)}
         dedupe = digest({"purpose": purpose, "route": route, "item": item_id,
                          "revision": revision, "occurrence": occurrence_id,
                          "payload": payload})
@@ -1105,7 +1119,7 @@ class Assistant:
         path = self.private / "briefings" / f"{identity}.json"
         path.write_bytes(canonical(record))
         return {"id": identity, "content_digest": record["content_digest"],
-                "summary": render_plain(record), "path": str(path)}
+                "summary": render_plain(record, include_lab=False), "path": str(path)}
 
     def briefing(self, identity: str) -> dict:
         row = self._db.execute("SELECT * FROM briefings WHERE id=?", (identity,)).fetchone()
@@ -1331,14 +1345,14 @@ class Assistant:
     def status(self, *, now: float | None = None) -> dict:
         now = time.time() if now is None else now
         bindings = self.bindings()
-        last_projection = max((row["updated_at"] for row in bindings.values()), default=None)
+        last_projection = min((row["updated_at"] for row in bindings.values()), default=None)
         lag = None if last_projection is None else now - last_projection
         return {
             "observed_at": now,
             "paused": self.paused(),
             "bindings": bindings,
             "projection_lag_seconds": lag,
-            "projection_stale": lag is None or lag > self.config.projection_freshness_seconds,
+            "projection_stale": lag is None or lag < 0 or lag >= self.config.projection_freshness_seconds,
             "open_items": len(self.inbox()),
             "pending_intents": len(self.intents(state="PENDING")),
             "open_gaps": self.gaps(),
@@ -1533,7 +1547,7 @@ class CommandProcessor:
             identity, "brief", result, now=now,
             reply={"purpose": "reply:brief",
                    "payload": {"request": identity,
-                               "detail": {"summary": render_plain(briefing)}}})
+                               "detail": {"summary": render_plain(briefing, include_lab=False)}}})
         return result
 
     def _inbox(self, record: dict, identity: str, *, now: float) -> dict[str, Any]:

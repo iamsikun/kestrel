@@ -1,0 +1,9 @@
+{
+  "/private/tmp/kestrel-messaging-repair/core.xml": "74ad3682c07cfb1a2864b306b0acec1ee682ac3ea39077e0be5c93437df15a2d",
+  "/private/tmp/kestrel-messaging-repair/install.xml": "7caff9489bc7eed87407625714aa400882d85b041697bf51c43d30385d9843a9",
+  "/private/tmp/kestrel-messaging-repair/install-evidence.json": "7d3bd2c7e23ecc8e68c5b42f21f895225ab2dd944d91e90fa4947ad06c7acaa5",
+  "/private/tmp/kestrel-messaging-repair/isolation.xml": "89bbf8a4622940aa00da695ab90a7a8a17cde637daaa8678505df159a5fb76fd",
+  "/private/tmp/kestrel-messaging-repair/release-gates.json": "85be749e53416a6c50585bf402fb4445e52b272ea7c5767ef8db73d3f290976f",
+  "/private/tmp/kestrel-messaging-repair/source-sha256.json": "297e5f4649ed1531a419365746050f851bda0007700636c8e63e3af81959081c",
+  "dist/kestrel_research_runtime-0.1.0-py3-none-any.whl": "d77e76427e0d212dc48061fa9b765a1d085cbeebf77677a7cf9ed325f923509e"
+}

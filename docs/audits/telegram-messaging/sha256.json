@@ -1,0 +1,8 @@
+{
+  "/private/tmp/kestrel-messaging-audit/core-unrestricted.xml": "2f214f6d4387fd11fc33c62bfcb213df6a0bfb25d063237315a6fce76fef9c08",
+  "/private/tmp/kestrel-messaging-audit/install.xml": "87633c1ecc2efd6a7fbe036a02b2abffe0b63e6d7d727497466ece644a1b7510",
+  "/private/tmp/kestrel-messaging-audit/install-evidence.json": "24ce0c99022fde59c259a271f324c9352eb04654893b6dd23a629af8cf43692f",
+  "docs/audits/telegram-messaging/probes.py": "5bc6656c3ad38162a4bc6dabecb0d9601ade2c801c7e4b3fb3ccd0e39f4d18a5",
+  "docs/audits/telegram-messaging/probe-results.json": "fc17914b9b5b0b8516352c2b9021d5ee60627ade9943e2df8c8497ace55c9f26",
+  "dist/kestrel_research_runtime-0.1.0-py3-none-any.whl": "b71e2e3d0de7466cb1f068f75447768851775a9657e2159f4ae9a1bf2c40e47f"
+}

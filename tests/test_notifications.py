@@ -240,6 +240,7 @@ def test_an_unknown_condition_or_purpose_has_no_template(wired):
     for intent in ({"purpose": "item:invented", "route": "timely",
                     "payload": {"condition": "invented", "detail": {}}},
                    {"purpose": "arbitrary", "route": "timely", "payload": {}}):
+        intent["payload"]["classifications"] = ["public_synthetic"]
         with pytest.raises(DisclosureRefused, match="template"):
             render_notification(intent, grant=make_grant(), channel=make_channel())
 
@@ -608,8 +609,8 @@ def test_a_synthetic_event_storm_stays_within_the_daily_caps(wired):
     transport = FakeTransport()
     with Gateway(root) as gateway:
         gateway.intake(now=NOW + 1)
-        for _ in range(10):
-            gateway.dispatch_once(transport, now=NOW + 1, limit=50)
+        for second in range(1, 20):
+            gateway.dispatch_once(transport, now=NOW + second, limit=100)
         quota = gateway.quota_state(now=NOW + 1)
         assert quota["used"].get("automated", 0) == 15  # 20 cap less 5 reserved critical
         assert quota["total"] <= 40

@@ -13,6 +13,19 @@ for the design, [`BUILD_STATE.md`](../BUILD_STATE.md) for current evidence, and
 
 ## 1. What works today, entirely offline
 
+Audit repair behavior: transport briefs omit local paths. Research-derived
+messages inherit a conservative whole-lab disclosure ceiling, so unrelated
+restricted records can suppress public-only delivery. Gateway processes consume
+only exported routing/policy and their journal. On an existing confirmed
+enrollment, an authority-side `notify permits refresh` regenerates routing after
+a fresh reconciliation. Legacy envelopes without classification provenance are
+not renewed; they must not be relabeled public to recover delivery.
+
+Send attempts are paced one second apart, requested replies are limited to five
+per rolling minute, and all critical/ordinary attempts share the automated daily
+cap. A stalled projector or changed source head stops permit renewal until a
+fresh reconciliation. These repairs do not authorize live activation.
+
 ```sh
 # A read-only briefing straight from verified records. Opens no writable store.
 kestrel --lab /external/lab brief --format markdown

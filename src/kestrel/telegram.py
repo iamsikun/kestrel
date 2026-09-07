@@ -21,6 +21,7 @@ import hmac
 import os
 import re
 import secrets
+import sqlite3
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -678,6 +679,7 @@ class Pairing:
             self.assistant._set_meta("telegram_user_id", str(candidate["user_id"]))
             self.assistant._set_meta("telegram_epoch",
                                      str(int(self.assistant._meta("telegram_epoch", "0")) + 1))
+        exporter.publish_routing()
         return {"session": row["id"], "channel": channel.channel_id,
                 "channel_version": channel.version, "grant": issued,
                 "bot_id": candidate["bot_id"], "chat_id": candidate["chat_id"],
@@ -746,6 +748,12 @@ def normalize_update(raw: Any, *, chat_id: int, user_id: int) -> tuple[dict | No
     kinds = sorted(set(raw) - {"update_id"})
     if kinds != list(ACCEPTED_UPDATE_KINDS):
         return None, f"unsupported_update_kind:{','.join(kinds) or 'empty'}"
+    raw_message = raw.get("message")
+    if isinstance(raw_message, dict) and any(key in raw_message for key in (
+            "forward_origin", "forward_from", "forward_from_chat", "forward_sender_name",
+            "forward_date", "forward_from_message_id", "forward_signature",
+            "is_automatic_forward")):
+        return None, "forwarded_message"
     try:
         message = wire(MessageRef, raw["message"])
     except TelegramError:
@@ -874,7 +882,15 @@ class InboundPoller:
                          self.epoch, 1 if record else 0,
                          canonical(record or {"rejected": reason,
                                               "update_id": update_id}).decode(), now))
-            except Exception:  # noqa: BLE001 - unique violation means a replay
+            except sqlite3.IntegrityError:
+                # Only an identity that is actually durable is a replay. Disk,
+                # constraint and other persistence failures must hold the cursor.
+                existing = self.gateway._db.execute(
+                    "SELECT 1 FROM inbound_updates WHERE bot_identity=? AND epoch=? "
+                    "AND update_id=?", (self.bot_identity, self.epoch,
+                                        update_id if type(update_id) is int else -1)).fetchone()
+                if existing is None:
+                    raise
                 duplicates.append(update_id)
                 continue
             (accepted if record else rejected).append(update_id)

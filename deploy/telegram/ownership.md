@@ -25,9 +25,11 @@ usermod -aG kestrel-msg kestrel-gateway
 | `MESSAGING_ROOT/assistant-private/` | `kestrel-lab` | `kestrel-lab` | `0700` | read/write | none |
 | `MESSAGING_ROOT/assistant-private/operator.token` | `kestrel-lab` | `kestrel-lab` | `0600` | read | none |
 | `MESSAGING_ROOT/notification-export/` | `kestrel-lab` | `kestrel-msg` | `2750` | read/write | read |
-| `MESSAGING_ROOT/notification-export/**` | `kestrel-lab` | `kestrel-msg` | `0640` | read/write | read |
+| `MESSAGING_ROOT/notification-export/envelopes/`, `permits/` | `kestrel-lab` | `kestrel-msg` | `2750` | read/write | read/traverse |
+| Exported JSON files, including `routing.json` | `kestrel-lab` | `kestrel-msg` | `0640` | read/write | read |
 | `MESSAGING_ROOT/telegram-runtime/` | `kestrel-gateway` | `kestrel-msg` | `2770` | read/write | read/write |
 | `MESSAGING_ROOT/telegram-runtime/gateway.sqlite` | `kestrel-gateway` | `kestrel-msg` | `0660` | read/write | read/write |
+| `MESSAGING_ROOT/telegram-runtime/sender.lock` | creating service | `kestrel-msg` | `0660` | read/write | read/write |
 | `MESSAGING_ROOT/telegram-secrets/` | `kestrel-gateway` | `kestrel-gateway` | `0700` | none | read |
 | `MESSAGING_ROOT/telegram-secrets/bot.token` | `kestrel-gateway` | `kestrel-gateway` | `0600` | none | read |
 
@@ -40,6 +42,10 @@ Notes.
   be `0600` and owned by `kestrel-gateway`.
 - `notification-export` uses the setgid bit so envelopes and permits keep the
   shared group as the authority writes them.
+- Gateway intake, dispatch, health and inbound polling never construct Assistant
+  or load `messaging.json`. They read only published routing/policy and their own
+  journal. Confirmation publishes routing; authority-side permit refresh can
+  regenerate it for existing confirmed enrollments without reading a bot token.
 - The lab's own directories are deliberately absent from every gateway unit's
   `ReadWritePaths` and `ReadOnlyPaths`, and are additionally listed under
   `InaccessiblePaths`.

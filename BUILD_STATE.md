@@ -1,271 +1,52 @@
 # Build state
 
-Telegram messaging T0-T3 and T5 implemented, T4 prepared and inert (2026-09-07).
-Branch `build/telegram-messaging`; verified revision
-`52a2d685ad8a74ad299ee4b35e4f67bb048fbfde`; commands, hashes and residual limits
-in [docs/MESSAGING_VERIFICATION.md](docs/MESSAGING_VERIFICATION.md); operator
-steps in [docs/MESSAGING_OPERATIONS.md](docs/MESSAGING_OPERATIONS.md).
+Telegram messaging audit repairs completed offline on `build/telegram-messaging`
+(2026-09-07). All nine findings have code repairs and 30 new regression cases.
+[docs/MESSAGING_REPAIRS.md](docs/MESSAGING_REPAIRS.md) records implementation,
+commands, outcomes, evidence and limitations. The original findings are retained
+in [docs/MESSAGING_AUDIT.md](docs/MESSAGING_AUDIT.md).
 
-Six new modules: `reporting.py` (the one verified report interpretation, now
-shared with `Lab.report`), `sources.py` (bounded read-only controller/evidence
-readers), `briefings.py`, `messaging.py` (assistant database, projection, rules,
-milestones, DST-correct schedules, attention, inbox, inbound commands),
-`notifications.py` (channels, service grants, disclosure, envelopes, permits,
-delivery state machine, quotas, offline transports) and `telegram.py` (four-method
-adapter, pairing, rotation, durable poller). New CLI: `brief`, `inbox`, `notify`
-under `--messaging-root`. New separate inventory `specs/messaging-acceptance.json`
-under a distinct JUnit property, so the pinned first-pilot spec, its manifest and
-`validate_pack` are untouched.
+Verified on the retained source snapshot before commit (JUnit revision
+`uncommitted`; exact input hashes in
+`docs/audits/telegram-messaging-repair/source-sha256.json`):
 
-Results: ruff exit 0; `python3 tools/validate_pack.py` exit 0 (20 files, 46
-requirements unchanged); `git diff --check` exit 0; core suite
-`-m 'not isolation and not install'` — 434 passed, 2 skipped (A28 and the
-never-run live Telegram file), 12 deselected, exit 0, against the 249-pass
-baseline; `uv build --offline` passed; clean external install 1 passed, exit 0;
-actual Docker Linux VM isolation 11 passed, exit 0, leaving none of its own
-containers; `uv run --offline kestrel demo --offline` exit 0 with two campaigns,
-six charged attempts, zero provider calls and two `not_supported` findings
-identical to the pre-messaging baseline; release accounting 42 passed / 4 blocked,
-exit 1, no integrity issues, all readiness flags and `deployment.authorized`
-false. Evidence: `/private/tmp/kestrel-telegram-messaging-final/`, with per-slice
-records in `/private/tmp/kestrel-telegram-messaging/`. Wheel SHA256
-`b71e2e3d0de7466cb1f068f75447768851775a9657e2159f4ae9a1bf2c40e47f`.
-
-No bot, credential, sent message, host service, deployment, live provider,
-permission change or push. Live Telegram operations fail closed behind
-`KESTREL_TELEGRAM_ACTIVATED`, which nothing in the codebase or test suite sets.
-`deploy/telegram/` has never been executed on any host, so messaging conditions
-N-A05 and N-A12D are unpassed, the live half of N-A19 is unpassed, and N-A20 is
-deferred. Prior blockers A28, A30, A31 and A43 are unchanged. The demonstrated
-boundary is what each process is given, not what an operating system denies, and
-this author cannot also be the independent review.
-
-Next unblocked action: an independent review of `3c47dc3..52a2d68`, starting with
-docs/MESSAGING_VERIFICATION.md and the disclosure and delivery paths. After that,
-the first authorized synthetic Telegram test follows docs/MESSAGING_OPERATIONS.md
-section 4, which needs an operator-created bot, a mode-0600 credential file, and
-`KESTREL_TELEGRAM_ACTIVATED=1` for those commands only.
-
-Telegram messaging T5 (2026-09-07): durable inbound polling and typed replies on
-`build/telegram-messaging`, offline. `telegram.InboundPoller` journals every update
-or rejection tombstone before advancing the offset, enters an explicit rebase mode
-for the documented idle reset and epoch changes, holds the offset when its journal
-is full, and reports a possible-inbound-loss gap past the 24-hour retention window.
-`messaging.CommandProcessor` applies `/help`, `/status`, `/brief`, `/inbox`,
-`/ack`, `/snooze`, `/stop` and `/resume`, binding each to the registered user and
-private chat, enforcing a 15-minute freshness window on attention mutations, and
-committing effect, reply intent and processed request identity together. There is
-no approve, run, cancel, budget or policy command. `tests/test_telegram.py` now
-holds 71 cases. Commands and results:
-`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`
-exit 0; `python3 tools/validate_pack.py` exit 0; `git diff --check` exit 0;
-`KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q`
-— 433 passed, 1 skipped (A28), 12 deselected, exit 0. Evidence:
-`/private/tmp/kestrel-telegram-messaging/core-t5.xml`.
-Polling is exercised entirely through injected updates and scripted HTTP; no
-request reached api.telegram.org. Next action: T4's reviewable but inert
-deployment profile, operator runbook and separately invoked live test.
-
-Telegram messaging T3 (2026-09-07): typed Telegram adapter and pairing on
-`build/telegram-messaging`, exercised only through a scripted HTTP transport.
-New `src/kestrel/telegram.py`: four permitted methods, fixed HTTPS origin, no
-redirects or ambient proxy, bounded responses, strict wire records, credential
-file handling with full redaction, `KESTREL_TELEGRAM_ACTIVATED` activation gate,
-deep-link pairing with a stored nonce hash and local operator confirmation,
-credential rotation check, and a `TelegramTransport` for the delivery state
-machine. `tests/test_telegram.py` adds 47 cases. Official Bot API documentation
-rechecked 2026-09-07; assumptions recorded in `telegram.API_ASSUMPTIONS` with
-`live_integration_verified` false. Commands and results:
-`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`
-exit 0; `python3 tools/validate_pack.py` exit 0; `git diff --check` exit 0;
-`KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q`
-— 409 passed, 1 skipped (A28), 12 deselected, exit 0. Evidence:
-`/private/tmp/kestrel-telegram-messaging/core-t3.xml`.
-No bot exists, no credential was obtained, no request reached api.telegram.org,
-and no service, deployment or permission changed. Next action: T4's reviewable
-but inert deployment profile and operator runbook, then T5's durable poller and
-typed status/attention commands.
-
-Telegram messaging T2 (2026-09-07): approved-envelope delivery on
-`build/telegram-messaging`. New `src/kestrel/notifications.py` with operator-issued
-channels and service grants, template-driven disclosure with classification
-inheritance and release scanning, atomic envelope publication, 60-second release
-permits, the PENDING/READY/SENDING/ACCEPTED/RETRY_WAIT/UNCERTAIN/terminal state
-machine, daily and reserved-critical quotas, spool byte budget, single-sender
-lease with uncertainty-preserving takeover, and offline `FakeTransport` /
-`NoEgressTransport`. A separate messaging operator credential is provisioned by
-`notify init`. `tests/test_notifications.py` adds 46 cases including a Hypothesis
-delivery-lifecycle state machine. Commands and results:
-`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`
-exit 0; `python3 tools/validate_pack.py` exit 0; `git diff --check` exit 0;
-`KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q`
-— 362 passed, 1 skipped (A28), 12 deselected, exit 0. Evidence:
-`/private/tmp/kestrel-telegram-messaging/core-t2.xml`.
-Only the offline scripted transport exists; nothing was sent and no bot,
-credential, service or deployment was created. N-A05 and N-A12D remain unpassed:
-they need the Linux deployment profile and measured OS denial. Next action: T3,
-the typed Telegram HTTPS adapter and pairing workflow against fake HTTP.
-
-Telegram messaging T1 (2026-09-07): durable assistant state on
-`build/telegram-messaging`. New `src/kestrel/messaging.py` with its own migrated
-SQLite schema (source bindings, items and revisions, attention history,
-subscriptions, versioned milestones, schedules, occurrences, briefings, intents,
-processed requests, gaps), deterministic projection and rule engine, DST-correct
-daily schedule with single catch-up, quiet-hour deferral, typed milestone
-predicates, and `notify`/`inbox` CLI branches under a new `--messaging-root`.
-`tests/test_messaging.py` adds 42 cases. Commands and results:
-`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`
-exit 0; `python3 tools/validate_pack.py` exit 0; `git diff --check` exit 0;
-`KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q`
-— 316 passed, 1 skipped (A28), 12 deselected, exit 0. Evidence:
-`/private/tmp/kestrel-telegram-messaging/core-t1.xml`.
-No envelope is exported and no transport exists yet; nothing was sent, no bot or
-credential exists, and no service, deployment or permission changed. Next action:
-T2, the approved-envelope spool, service grant, delivery state machine and fake
-transport.
-
-Telegram messaging T0 (2026-09-07): read-only briefings implemented on
-`build/telegram-messaging`, branched from the planning branch tip `b944687`
-(which carries an unrelated local installation note above `28ec895`; that work is
-preserved, not dropped). New modules `src/kestrel/reporting.py`,
-`src/kestrel/sources.py`, `src/kestrel/briefings.py`, a `kestrel --lab L brief
---since --format json|markdown|plain` CLI branch that never constructs `Lab`, a
-separate `specs/messaging-acceptance.json` inventory, and `tests/test_briefings.py`.
-`Lab.report` now delegates to the shared `build_report`; its output is unchanged.
-Commands and results:
-`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`
-exit 0; `python3 tools/validate_pack.py` exit 0 (20 files, 46 requirements
-unchanged); `git diff --check` exit 0;
-`KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q`
-— 274 passed, 1 skipped (A28), 12 deselected, exit 0, against the 249-pass
-baseline. Evidence: `/private/tmp/kestrel-telegram-messaging/`.
-No bot, credential, message, host service, deployment, live provider, permission
-change or push occurred; the read-only reader is an application boundary, not a
-measured OS one. Next action: T1, the assistant database, projection, rules,
-milestones, schedules and durable inbox.
-
-Local installation (2026-09-07): user requested installation and an empty lab at
-`/Users/iamsikun/research/sklab`. Built source revision
-`28ec895ee6335975ee9423a343ffcf70d337984e` with `uv build --offline` (exit 0),
-then installed the wheel with `uv tool install --offline --no-config --no-build
---no-index --find-links /private/tmp/kestrel-wheelhouse --python
-/Users/iamsikun/research/kestrel/.venv/bin/python
-/Users/iamsikun/research/kestrel/dist/kestrel_research_runtime-0.1.0-py3-none-any.whl`
-(exit 0). `kestrel lab init /Users/iamsikun/research/sklab`, `kestrel doctor`,
-and `kestrel --version` passed (exit 0); executable is
-`/Users/iamsikun/.local/bin/kestrel`, version 0.1.0. Lab mode is 0700 and operator
-token mode is 0600; token contents were not displayed. No projects enrolled.
-Clean-wheel installation and installed offline demo: `tests/test_install.py -q`
-with KESTREL_WHEEL and KESTREL_WHEELHOUSE set to the above inputs passed (1 test,
-exit 0). Initial sandboxed run failed with uncertain fixture termination (exit 1);
-rerun with approved process-inspection access passed. Initial receipts:
-`/private/tmp/kestrel-sklab-install-evidence.json` and
-`/private/tmp/kestrel-sklab-install.xml`. Passing receipts and SHA256:
-- `/private/tmp/kestrel-sklab-install-verified.json`:
-  `24664c55b042c8e113de1e0c7c324673e85f9ba234d36c03b3ef9d49d39fb1fd`
-- `/private/tmp/kestrel-sklab-install-verified.xml`:
-  `ea7f6570188200f5d8dc659973c1e0ee7b094e904d53c1fc94c069d81637345b`
-- Wheel: `e33177f6c7f4cdb14a4c512ce5564d3843707bea5621a709a79e2625f82eac79`.
-No runtime changes; full static/core/state-machine/adversarial/isolation gates were
-not rerun for installation. Prior deployment blockers remain. Installation task
-complete; next action when requested is lab project setup using the documented
-CLI. No live campaign or controller service was deployed.
-
-Telegram implementation planning (2026-09-07): operator selected Telegram and
-requested no implementation. [Implementation plan](docs/proposals/TELEGRAM_IMPLEMENTATION_PLAN.md)
-defines one private chat, deterministic briefings, read-only source integration,
-T0–T5 delivery slices, pairing/revocation, polling/recovery, tests and activation
-gates. MESSAGING links to it; assumptions are in docs/DECISIONS.md. Documentation
-only; no runtime, dependencies, bot, credentials, schedule, or service created.
-Documentation verification receipt: `/private/tmp/kestrel-telegram-plan/checks.json`.
-Plan SHA256: `55146fd0cc3a1354070a28c0f37006022515856c4e355f4fd31fcab49dc3b9b8`.
-Pack integrity, local document links/fences/whitespace, and unchanged runtime/spec
-checks: exit 0. Runtime, package-install, isolation and live Telegram/deployment
-tests were not run for this planning task; their prior evidence/blockers remain.
-Next action is review of the plan. Only after a request to implement, start T0's
-read-only verified report/briefing slice with synthetic offline tests. Deployment,
-user-data access and live integration gates remain separate and unchanged.
-
-Messaging design consolidation (2026-09-07):
-[docs/proposals/MESSAGING.md](docs/proposals/MESSAGING.md) now covers assistant
-behaviors, source-aware projection/inbox, approved-envelope delivery, attention
-and authorization boundaries, researched transport candidates, and proposed N0–N6
-increments with 20 acceptance conditions. Proposal only; no runtime or pinned
-specification changes. Consequential assumptions are in docs/DECISIONS.md.
-Consolidation-time proposal SHA256: `b56721a3bc252f4b6bf1519f6dc91ceea7224ef13f84a7d1680c771901d31912`.
-Check receipt and retained original draft: `/private/tmp/kestrel-messaging-review/`.
-Pack integrity, Ruff, local document links and whitespace checks: exit 0.
-Runtime unit/integration/state-machine/adversarial, install, isolation, live
-transport, and deployment gates were not run for this documentation-only task;
-prior evidence and blockers below remain unchanged. Temporary evidence may be
-cleaned by the OS. Next unblocked messaging action: implement N0 deterministic
-local briefing from verified records with synthetic offline tests. This proposal
-does not authorize remote delivery, host service setup, or deployment.
-
-Repository orientation (2026-09-07): [docs/REPOSITORY_GUIDE.md](docs/REPOSITORY_GUIDE.md)
-maps the implemented modules, external lab layout, campaign flow, and personal-assistant
-product gaps. Linked from USAGE; no runtime, original specification, or acceptance
-changes. Inspected checkout: `a73f5387400f3d5eb9d024ee45782b98192b9e0e`.
-Fresh core check: `KESTREL_SOURCE_REVISION=a73f538 KESTREL_TEST_SCOPE=core .venv/bin/python -m pytest -m 'not isolation and not install' -q --junitxml=/private/tmp/kestrel-structure-review-core-unrestricted.xml`
-— exit 0, 249 passed / 1 skipped (A28) / 12 deselected, 18.79 seconds.
-JUnit SHA256: `f19b3ab84ef403ffddf49c6c63954353c837c3b44f25a8b58975636ebe55fef6`.
-Initial tool-sandbox run could not inspect process state (`ps`: operation not permitted);
-interrupted with exit 2 after 5 failures / 48 passes, then rerun outside that sandbox.
-Initial XML: `/private/tmp/kestrel-structure-review-core.xml`, SHA256
-`c6fc2217d862b1147dfc54e5c6a55aa348d06df32070f40961c75be483c8e2d3`.
-`python3 tools/validate_pack.py`, `.venv/bin/python -m kestrel doctor`,
-`.venv/bin/ruff check src tests tools/release_gates.py tools/prepare_wheelhouse.py`,
-documentation link checks, and `git diff --check`: exit 0. Install, isolation,
-external audit, and release accounting were not rerun for this documentation task;
-their prior evidence and all blockers below remain unchanged. The new core XML
-uses the abbreviated source revision and is orientation evidence, not a new release
-certification. Next implementation proposal is the guide's general isolated synthetic
-campaign slice; the separate independent deployment review remains outstanding.
-
-Follow-up review and repairs complete on `build/first-pilot`. Tested implementation:
-`ac9879e9a7725558468112f9f3950c687cf0a84d` (repairs in `bbc40cd` and `ac9879e`).
-Subsequent verification documentation changes no runtime code. Review assessment:
-[docs/REVIEW_FOLLOWUP.md](docs/REVIEW_FOLLOWUP.md); decisions:
-[docs/DECISIONS.md](docs/DECISIONS.md).
-
-The deterministic offline pilot runs two generated external synthetic projects,
-six charged attempts (two offline agents, four scientific workers), zero provider
-calls, and two honest valid `not_supported` findings. Execution/evidence boundaries,
-ledger state/fences/budgets, protected evaluator, artifacts and CLI exist. The
-Docker driver is tested separately; general isolated campaigns are not wired to Lab.
-
-Remaining review defects repaired: valid completion resolves registered evidence
-and checks its attribution/labels; reports reject inconsistent legacy outcomes;
-Lab registers typed amendment contracts on run/cancel without inheriting approval;
-offline recovery binds provider identity/version; memory logs the actual grant reason.
-Six selected counterexamples failed before repair. No pinned specification changed.
-
-Exact-revision verification (2026-09-07), commands and hashes in
-[docs/VERIFICATION.md](docs/VERIFICATION.md):
-
-- Core unit/integration/adversarial/state-machine: 249 passed, 1 skipped (A28),
+- Core unit/integration/adversarial/state-machine suite: 464 passed, 2 skipped,
   12 separately executed tests deselected; exit 0.
-- Offline wheel build and clean install/installed demo: passed; 1 install test, exit 0.
-- Actual Docker Linux VM isolation: 11 passed, exit 0; no remaining test containers.
-- Claude's unchanged retained audit probes against the source archive: 83 passed, exit 0.
-- Ruff, original pack integrity (20 files/46 requirements), diff whitespace: exit 0.
-- Release accounting: 42 passed / 4 blocked, exit 1; no integrity issues;
-  all composite readiness flags false and deployment.authorized false.
+- Fresh offline wheel build and external package install/installed demo: passed;
+  1 install test, exit 0.
+- Actual Docker Linux VM runner isolation: 11 passed, exit 0.
+- Ruff, original pack integrity (20 files / 46 requirements), whitespace: exit 0.
+- Release accounting: 42 passed / 4 blocked, no integrity issues; exit 1.
+  All composite readiness flags and deployment.authorized remain false.
 
-Evidence: `/private/tmp/kestrel-verification-ac9879e/`, including four JUnit records,
-install logs, demo, both exported packets, original audit and SHA256 manifest.
-Wheel SHA256: `e33177f6c7f4cdb14a4c512ce5564d3843707bea5621a709a79e2625f82eac79`.
-Temporary evidence is subject to system cleanup. Prior runs certify prior code only.
+Evidence: `/private/tmp/kestrel-messaging-repair/`; retained manifests in
+`docs/audits/telegram-messaging-repair/`. Temporary evidence may be cleaned by the
+system. Wheel SHA256:
+`d77e76427e0d212dc48061fa9b765a1d085cbeebf77677a7cf9ed325f923509e`.
 
-Blockers unchanged: A28 actual sanitized provider captures; A30 authorized live
-integration; A31 actual credential boundary is unauthorized, unimplemented and
-untested; A43 target GPU. VM measurements do not certify a native Linux deployment.
-No target service audit, user-namespace remapping or pinned seccomp/AppArmor profile
-is claimed. Finite-reader timing and writable-workspace limits are advisory.
+Repairs: mandatory disclosure provenance; gateway-only CLI/routing and shared
+file modes; durable inbound failure recovery; unique sender ownership, OS lock
+and conditional claims; releasable briefs; grant/projection expiry enforcement;
+combined quotas, persisted pacing/reply-minute cap; forwarded-command rejection.
+Research-derived messages conservatively inherit whole-lab classifications; this
+can suppress public-only delivery when any restricted material is present.
+Consequential choices: [docs/DECISIONS.md](docs/DECISIONS.md).
 
-Next unblocked action for handoff: independently review `bbc40cd` and `ac9879e`,
-starting with `docs/REVIEW_FOLLOWUP.md`, and verify the retained evidence hashes.
-This repair author cannot provide the sole independent deployment review. A28 can
-next run offline when provenance-bearing public-synthetic captures are supplied;
-A30/A31/GPU work needs the stated authorization/resources. No live calls, pushes,
-deployment, host-service changes or research repository access occurred.
+Remaining gates: A28 sanitized provider captures; A30 live provider integration;
+A31 actual credential-boundary integration; A43 target GPU. Messaging N-A05 and
+N-A12D require real target-host identity and egress measurements; N-A19's live half
+is unpassed, N-A20 literature work is deferred. Linux VM runner measurements do
+not certify a deployed messaging service. T4 service files remain inert.
+
+Next unblocked action: independently review these repairs and their regressions.
+Then, only with separate authorization, follow
+[docs/MESSAGING_OPERATIONS.md](docs/MESSAGING_OPERATIONS.md) for target-host gates
+and a synthetic live Telegram test. No live message, host-service change,
+controller deployment, permission expansion or research-repository access occurred.
+
+Earlier implementation evidence remains in
+[docs/MESSAGING_VERIFICATION.md](docs/MESSAGING_VERIFICATION.md),
+[docs/VERIFICATION.md](docs/VERIFICATION.md), and
+[docs/REVIEW_FOLLOWUP.md](docs/REVIEW_FOLLOWUP.md). Those historical claims apply to
+their recorded revisions; the independent messaging audit superseded several of
+the original messaging claims.
